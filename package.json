@@ -44,6 +44,7 @@
     "build:ts": "tsc",
     "format": "prettier --write .",
     "lint": "eslint src/ --ext .ts",
+    "postinstall": "pnpm build:rust",
     "start": "pnpm build:rust:dev && pnpm build:ts && electron-forge start",
     "test": "vitest run",
     "test:rust": "cd rust-sampler && cargo test",
