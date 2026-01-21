@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -53,18 +54,58 @@ export class ColorPicker {
   }
 
   private getPreloadPath(): string {
-    // In dev (Electron Forge): __dirname is .vite/build/, preload is magnifier-preload.js
-    // In published: __dirname is dist/, preload is ../.vite/renderer/preload.js
+    // In INTERNAL_DEV mode (developing hue-hunter itself), preload is in .vite/build/
     if (process.env.INTERNAL_DEV === 'true') {
       return join(__dirname, 'magnifier-preload.js');
     }
-    return join(__dirname, '../.vite/renderer/preload.js');
+
+    // In production or when used as dependency
+    if (isDev) {
+      // Try node_modules first (when used as a dependency)
+      const depPath = join(
+        app.getAppPath(),
+        'node_modules',
+        'hue-hunter',
+        '.vite',
+        'renderer',
+        'preload.js'
+      );
+
+      if (existsSync(depPath)) {
+        return depPath;
+      }
+
+      // Fallback to local path (when hue-hunter is the main app)
+      return join(app.getAppPath(), '.vite', 'renderer', 'preload.js');
+    } else {
+      // In packaged production app, preload is in resources
+      return join(process.resourcesPath, 'app.asar', '.vite', 'renderer', 'preload.js');
+    }
   }
 
   private getRendererPath(): string {
-    // Renderer is built to .vite/renderer/ by vite during prepare
-    // __dirname is dist/ (from tsc) so ../.vite/renderer/ works
-    return join(__dirname, '../.vite/renderer/index.html');
+    // In production or when used as dependency
+    if (isDev) {
+      // Try node_modules first (when used as a dependency)
+      const depPath = join(
+        app.getAppPath(),
+        'node_modules',
+        'hue-hunter',
+        '.vite',
+        'renderer',
+        'index.html'
+      );
+
+      if (existsSync(depPath)) {
+        return depPath;
+      }
+
+      // Fallback to local path (when hue-hunter is the main app)
+      return join(app.getAppPath(), '.vite', 'renderer', 'index.html');
+    } else {
+      // In packaged production app, renderer is in resources
+      return join(process.resourcesPath, 'app.asar', '.vite', 'renderer', 'index.html');
+    }
   }
 
   /**
