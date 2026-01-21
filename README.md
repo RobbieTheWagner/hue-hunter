@@ -243,7 +243,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-MIT © [Ship Shape Consulting LLC](https://shipshape.io)
+MIT © [Robbie Wagner](https://robbiethewagner.dev)
 
 ## Acknowledgments
 
