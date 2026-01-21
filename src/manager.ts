@@ -33,13 +33,14 @@ export class RustSamplerManager {
     
     if (isDev) {
       // Try node_modules first (when used as a dependency)
+      // Always use release binary for dependencies
       const depPath = join(
         app.getAppPath(),
         'node_modules',
         'hue-hunter',
         'rust-sampler',
         'target',
-        'debug',
+        'release',
         binaryName
       );
       
@@ -47,7 +48,7 @@ export class RustSamplerManager {
         return depPath;
       }
       
-      // Fallback to local path (when hue-hunter is the main app)
+      // Fallback to local path (when hue-hunter is the main app being developed)
       return join(
         app.getAppPath(),
         'rust-sampler',
