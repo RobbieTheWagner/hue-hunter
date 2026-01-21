@@ -67,7 +67,7 @@ export class ColorPicker {
         'hue-hunter',
         '.vite',
         'renderer',
-        'preload.js'
+        'preload.mjs'
       );
 
       if (existsSync(depPath)) {
@@ -75,10 +75,10 @@ export class ColorPicker {
       }
 
       // Fallback to local path (when hue-hunter is the main app)
-      return join(process.cwd(), '.vite', 'renderer', 'preload.js');
+      return join(process.cwd(), '.vite', 'renderer', 'preload.mjs');
     } else {
       // In packaged production app, preload is in resources
-      return join(process.resourcesPath, 'app.asar', '.vite', 'renderer', 'preload.js');
+      return join(process.resourcesPath, 'app.asar', '.vite', 'renderer', 'preload.mjs');
     }
   }
 
@@ -142,6 +142,10 @@ export class ColorPicker {
     const cursorPos = screen.getCursorScreenPoint();
     const display = screen.getDisplayNearestPoint(cursorPos);
 
+    const preloadPath = this.getPreloadPath();
+    console.log('[HueHunter] Preload path:', preloadPath);
+    console.log('[HueHunter] Preload exists:', existsSync(preloadPath));
+
     this.magnifierWindow = new BrowserWindow({
       x: display.bounds.x,
       y: display.bounds.y,
@@ -158,9 +162,15 @@ export class ColorPicker {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
+        sandbox: false, // Required for ESM preload scripts
         devTools: true, // Temporarily force true for debugging
-        preload: this.getPreloadPath(),
+        preload: preloadPath,
       },
+    });
+
+    // Log console messages from renderer
+    this.magnifierWindow.webContents.on('console-message', (_event, level, message) => {
+      console.log(`[HueHunter Renderer] ${message}`);
     });
 
     // Set to screen-saver level
@@ -183,12 +193,8 @@ export class ColorPicker {
       await this.magnifierWindow.loadURL(url);
     }
 
-    // Wait for the page to actually finish loading before showing
-    await new Promise<void>((resolve) => {
-      this.magnifierWindow?.webContents.once('did-finish-load', () => resolve());
-    });
-
     this.magnifierWindow.show();
+    console.log('[HueHunter] Magnifier window shown');
   }
 
   private startColorPicking(): Promise<string | null> {
@@ -265,6 +271,7 @@ export class ColorPicker {
 
       // Set up data callback for the sampler
       const dataCallback = (pixelData: PixelData) => {
+        console.log('[HueHunter] Got pixel data, cursor:', pixelData.cursor);
         // Update current color
         currentColor = pixelData.center.hex;
 

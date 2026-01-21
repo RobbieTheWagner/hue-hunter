@@ -25,8 +25,9 @@ export default defineConfig({
       },
       external: ['electron'],
       output: {
+        format: 'es',
         entryFileNames: (chunkInfo) => {
-          return chunkInfo.name === 'preload' ? 'preload.js' : 'assets/[name]-[hash].js';
+          return chunkInfo.name === 'preload' ? 'preload.mjs' : 'assets/[name]-[hash].js';
         },
       },
     },
