@@ -1,4 +1,5 @@
 import { ChildProcess, spawn } from 'child_process';
+import { existsSync } from 'fs';
 import { join } from 'path';
 
 import { app } from 'electron';
@@ -28,20 +29,36 @@ export class RustSamplerManager {
 
   private getBinaryPath(): string {
     const ext = process.platform === 'win32' ? '.exe' : '';
+    const binaryName = `hue-hunter-sampler${ext}`;
     
     if (isDev) {
-      // In development, use the debug build from rust-sampler/target/debug
+      // Try node_modules first (when used as a dependency)
+      const depPath = join(
+        app.getAppPath(),
+        'node_modules',
+        'hue-hunter',
+        'rust-sampler',
+        'target',
+        'debug',
+        binaryName
+      );
+      
+      if (existsSync(depPath)) {
+        return depPath;
+      }
+      
+      // Fallback to local path (when hue-hunter is the main app)
       return join(
         app.getAppPath(),
         'rust-sampler',
         'target',
         'debug',
-        `hue-hunter-sampler${ext}`
+        binaryName
       );
     } else {
       // In production, binary is in resources
       const resourcesPath = process.resourcesPath;
-      return join(resourcesPath, `hue-hunter-sampler${ext}`);
+      return join(resourcesPath, binaryName);
     }
   }
 
