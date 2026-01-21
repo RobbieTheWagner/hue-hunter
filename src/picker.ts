@@ -111,10 +111,14 @@ export class ColorPicker {
     // Linux: Limited/no support depending on compositor
     this.magnifierWindow.setContentProtection(true);
 
-    if (isDev) {
-      // In development, magnifier runs on port 5174
+    // Check if we're in node_modules (used as a dependency)
+    const isInNodeModules = __dirname.includes('node_modules');
+    
+    if (isDev && !isInNodeModules) {
+      // Only use dev server when hue-hunter itself is being developed
       await this.magnifierWindow.loadURL('http://localhost:5174/');
     } else {
+      // Use built files when used as a dependency or in production
       const magnifierPath = join(__dirname, '../renderer/index.html');
       await this.magnifierWindow.loadFile(magnifierPath);
     }
