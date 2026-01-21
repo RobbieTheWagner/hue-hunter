@@ -1,0 +1,75 @@
+{
+  "name": "hue-hunter",
+  "version": "0.1.0",
+  "description": "Cross-platform magnifying color picker for Electron applications",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "renderer",
+    "rust-sampler/src",
+    "rust-sampler/Cargo.toml",
+    "rust-sampler/Cargo.lock",
+    "rust-sampler/README.md"
+  ],
+  "scripts": {
+    "build": "pnpm build:rust && pnpm build:ts && pnpm build:renderer",
+    "build:rust": "cd rust-sampler && cargo build --release --features x11,wayland",
+    "build:rust:dev": "cd rust-sampler && cargo build --features x11,wayland",
+    "build:ts": "tsc",
+    "build:renderer": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:rust": "cd rust-sampler && cargo test",
+    "lint": "eslint src/ --ext .ts",
+    "format": "prettier --write ."
+  },
+  "keywords": [
+    "electron",
+    "color-picker",
+    "eyedropper",
+    "magnifier",
+    "cross-platform",
+    "rust"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shipshapecode/hue-hunter.git"
+  },
+  "author": {
+    "name": "Ship Shape Consulting LLC",
+    "email": "hello@shipshape.io",
+    "url": "https://shipshape.io"
+  },
+  "license": "MIT",
+  "peerDependencies": {
+    "electron": ">=28.0.0"
+  },
+  "dependencies": {
+    "electron-is-dev": "^3.0.1"
+  },
+  "optionalDependencies": {
+    "color-name-list": "^14.27.0",
+    "nearest-color": "^0.4.4"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.7",
+    "@tailwindcss/vite": "^4.1.18",
+    "electron": "^40.0.0",
+    "prettier": "^3.7.4",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.16"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

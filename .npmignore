@@ -1,0 +1,17 @@
+src/
+tests/
+*.test.ts
+.vite/
+tsconfig.json
+vite.config.ts
+vitest.config.ts
+.gitignore
+.prettierrc
+.eslintrc*
+*.log
+
+# Keep only compiled output
+!dist/
+
+# Don't include Rust build artifacts
+rust-sampler/target/
