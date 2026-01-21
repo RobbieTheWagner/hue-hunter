@@ -39,11 +39,6 @@ function createWindow() {
   
   void mainWindow.loadURL(devAppURL);
 
-  // Open DevTools in development
-  if (isDev) {
-    mainWindow.webContents.openDevTools();
-  }
-
   mainWindow.on('closed', () => {
     mainWindow = null;
   });

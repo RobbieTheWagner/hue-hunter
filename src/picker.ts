@@ -102,10 +102,6 @@ export class ColorPicker {
       },
     });
 
-    if (isDev) {
-      this.magnifierWindow.webContents.openDevTools({ mode: 'detach' });
-    }
-
     // Set to screen-saver level
     this.magnifierWindow.setAlwaysOnTop(true, 'screen-saver');
 
