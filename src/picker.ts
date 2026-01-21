@@ -111,11 +111,8 @@ export class ColorPicker {
     // Linux: Limited/no support depending on compositor
     this.magnifierWindow.setContentProtection(true);
 
-    // Check if we're in node_modules (used as a dependency)
-    const isInNodeModules = __dirname.includes('node_modules');
-    
-    if (isDev && !isInNodeModules) {
-      // Only use dev server when hue-hunter itself is being developed
+    // Only use dev server when INTERNAL_DEV is set (hue-hunter itself being developed)
+    if (process.env.INTERNAL_DEV === 'true') {
       await this.magnifierWindow.loadURL('http://localhost:5174/');
     } else {
       // Use built files when used as a dependency or in production
