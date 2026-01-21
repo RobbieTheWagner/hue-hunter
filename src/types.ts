@@ -1,22 +1,38 @@
-// Derived types from the actual magnifier API implementation
-// This ensures types stay in sync with the actual implementation
+// Type definitions for the magnifier API
 
-import type { magnifierAPI } from './magnifier-preload';
+export interface ColorData {
+  hex: string;
+  r: number;
+  g: number;
+  b: number;
+}
 
-// Export the main API type derived from the implementation
-export type MagnifierAPI = typeof magnifierAPI;
+export interface PositionData {
+  x: number;
+  y: number;
+  displayX: number;
+  displayY: number;
+}
 
-// Extract parameter types from the callback functions for convenience
-type UpdatePositionCallback = Parameters<
-  typeof magnifierAPI.on.updatePosition
->[0];
-type UpdatePixelGridCallback = Parameters<
-  typeof magnifierAPI.on.updatePixelGrid
->[0];
+export interface PixelGridData {
+  centerColor: ColorData;
+  colorName: string;
+  pixels: Array<Array<ColorData>>;
+  diameter: number;
+  gridSize: number;
+  squareSize: number;
+}
 
-// Derive the data types from the callback parameter types
-export type PositionData = Parameters<UpdatePositionCallback>[0];
-export type PixelGridData = Parameters<UpdatePixelGridCallback>[0];
-
-// Extract nested types for convenience
-export type ColorData = PixelGridData['centerColor'];
+export interface MagnifierAPI {
+  send: {
+    ready: () => void;
+    colorSelected: () => void;
+    cancelled: () => void;
+    zoomDiameter: (delta: number) => void;
+    zoomDensity: (delta: number) => void;
+  };
+  on: {
+    updatePosition: (callback: (data: PositionData) => void) => unknown;
+    updatePixelGrid: (callback: (data: PixelGridData) => void) => unknown;
+  };
+}

@@ -17,6 +17,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'renderer/index.html'),
+        preload: resolve(__dirname, 'renderer/preload.ts'),
       },
       output: {
         // Don't hash filenames in production so picker.ts can find them
