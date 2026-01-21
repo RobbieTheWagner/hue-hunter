@@ -52,6 +52,21 @@ export class ColorPicker {
     return this.colorNameFn({ r, g, b });
   }
 
+  private getPreloadPath(): string {
+    // In dev (Electron Forge): __dirname is .vite/build/, preload is magnifier-preload.js
+    // In published: __dirname is dist/, preload is ../.vite/renderer/preload.js
+    if (process.env.INTERNAL_DEV === 'true') {
+      return join(__dirname, 'magnifier-preload.js');
+    }
+    return join(__dirname, '../.vite/renderer/preload.js');
+  }
+
+  private getRendererPath(): string {
+    // Renderer is built to .vite/renderer/ by vite during prepare
+    // __dirname is dist/ (from tsc) so ../.vite/renderer/ works
+    return join(__dirname, '../.vite/renderer/index.html');
+  }
+
   /**
    * Launch the magnifying color picker and wait for user selection.
    * @returns The selected color as a hex string (e.g., "#FF8040"), or null if cancelled
@@ -98,13 +113,7 @@ export class ColorPicker {
         nodeIntegration: false,
         contextIsolation: true,
         devTools: isDev,
-        preload: join(
-          app.getAppPath(),
-          'node_modules',
-          'hue-hunter',
-          'renderer',
-          'preload.js'
-        ),
+        preload: this.getPreloadPath(),
       },
     });
 
@@ -121,15 +130,7 @@ export class ColorPicker {
     if (process.env.INTERNAL_DEV === 'true') {
       await this.magnifierWindow.loadURL('http://localhost:5174/');
     } else {
-      // Use built files - construct path from app root
-      const magnifierPath = join(
-        app.getAppPath(),
-        'node_modules',
-        'hue-hunter',
-        'renderer',
-        'index.html'
-      );
-      await this.magnifierWindow.loadFile(magnifierPath);
+      await this.magnifierWindow.loadFile(this.getRendererPath());
     }
 
     this.magnifierWindow.show();
@@ -255,9 +256,6 @@ export class ColorPicker {
             console.error('[Hue Hunter] Failed to start sampler:', error);
           });
       } else {
-        console.log(
-          '[Hue Hunter] Sampler already running from ensureStarted, updating callbacks'
-        );
         // Replace callbacks since ensureStarted used temporary ones
         this.samplerManager.dataCallback = dataCallback;
         this.samplerManager.errorCallback = errorCallback;

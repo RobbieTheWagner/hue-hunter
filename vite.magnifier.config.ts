@@ -15,7 +15,18 @@ export default defineConfig({
     port: 5174,
   },
   build: {
-    outDir: resolve(__dirname, '.vite/renderer/magnifier_window'),
+    outDir: resolve(__dirname, '.vite/renderer'),
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'renderer/index.html'),
+        preload: resolve(__dirname, 'renderer/magnifier-preload.ts'),
+      },
+      output: {
+        entryFileNames: (chunkInfo) => {
+          return chunkInfo.name === 'preload' ? 'preload.js' : 'assets/[name]-[hash].js';
+        },
+      },
+    },
   },
 });
