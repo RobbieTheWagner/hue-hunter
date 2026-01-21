@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
 import isDev from 'electron-is-dev';
@@ -59,11 +59,10 @@ export class ColorPicker {
       return join(__dirname, 'magnifier-preload.js');
     }
 
-    // In production or when used as dependency
     if (isDev) {
-      // Try node_modules first (when used as a dependency)
+      // Use process.cwd() which points to the actual project root
       const depPath = join(
-        app.getAppPath(),
+        process.cwd(),
         'node_modules',
         'hue-hunter',
         '.vite',
@@ -76,7 +75,7 @@ export class ColorPicker {
       }
 
       // Fallback to local path (when hue-hunter is the main app)
-      return join(app.getAppPath(), '.vite', 'renderer', 'preload.js');
+      return join(process.cwd(), '.vite', 'renderer', 'preload.js');
     } else {
       // In packaged production app, preload is in resources
       return join(process.resourcesPath, 'app.asar', '.vite', 'renderer', 'preload.js');
@@ -84,11 +83,10 @@ export class ColorPicker {
   }
 
   private getRendererPath(): string {
-    // In production or when used as dependency
     if (isDev) {
-      // Try node_modules first (when used as a dependency)
+      // Use process.cwd() which points to the actual project root
       const depPath = join(
-        app.getAppPath(),
+        process.cwd(),
         'node_modules',
         'hue-hunter',
         '.vite',
@@ -96,12 +94,19 @@ export class ColorPicker {
         'index.html'
       );
 
+      console.log('[HueHunter] process.cwd():', process.cwd());
+      console.log('[HueHunter] Checking depPath:', depPath);
+      console.log('[HueHunter] depPath exists:', existsSync(depPath));
+
       if (existsSync(depPath)) {
+        console.log('[HueHunter] Using depPath:', depPath);
         return depPath;
       }
 
       // Fallback to local path (when hue-hunter is the main app)
-      return join(app.getAppPath(), '.vite', 'renderer', 'index.html');
+      const fallbackPath = join(process.cwd(), '.vite', 'renderer', 'index.html');
+      console.log('[HueHunter] Using fallbackPath:', fallbackPath);
+      return fallbackPath;
     } else {
       // In packaged production app, renderer is in resources
       return join(process.resourcesPath, 'app.asar', '.vite', 'renderer', 'index.html');
@@ -153,7 +158,7 @@ export class ColorPicker {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        devTools: isDev,
+        devTools: true, // Temporarily force true for debugging
         preload: this.getPreloadPath(),
       },
     });
@@ -171,8 +176,17 @@ export class ColorPicker {
     if (process.env.INTERNAL_DEV === 'true') {
       await this.magnifierWindow.loadURL('http://localhost:5174/');
     } else {
-      await this.magnifierWindow.loadFile(this.getRendererPath());
+      // Use loadURL with file:// protocol so relative asset paths resolve correctly
+      const rendererPath = this.getRendererPath();
+      const url = pathToFileURL(rendererPath).toString();
+      console.log('[HueHunter] Loading URL:', url);
+      await this.magnifierWindow.loadURL(url);
     }
+
+    // Wait for the page to actually finish loading before showing
+    await new Promise<void>((resolve) => {
+      this.magnifierWindow?.webContents.once('did-finish-load', () => resolve());
+    });
 
     this.magnifierWindow.show();
   }

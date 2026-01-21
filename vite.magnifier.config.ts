@@ -9,6 +9,7 @@ const __dirname = dirname(__filename);
 
 export default defineConfig({
   root: 'renderer',
+  base: './',
   plugins: [tailwindcss()],
   clearScreen: false,
   server: {
@@ -16,12 +17,13 @@ export default defineConfig({
   },
   build: {
     outDir: resolve(__dirname, '.vite/renderer'),
-    emptyOutDir: true,
+    emptyOutDir: false,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'renderer/index.html'),
         preload: resolve(__dirname, 'renderer/magnifier-preload.ts'),
       },
+      external: ['electron'],
       output: {
         entryFileNames: (chunkInfo) => {
           return chunkInfo.name === 'preload' ? 'preload.js' : 'assets/[name]-[hash].js';
