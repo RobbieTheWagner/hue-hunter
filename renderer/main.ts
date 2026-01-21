@@ -7,6 +7,9 @@ import {
 import { calculatePixelUpdatesWithMismatch } from '../src/utils/pixel-grid-utils';
 import type { PixelGridData, PositionData } from '../src/types';
 
+console.log('[Magnifier Renderer] Starting...');
+console.log('[Magnifier Renderer] window.magnifierAPI:', window.magnifierAPI);
+
 class MagnifierRenderer {
   private magnifierContainer: Element;
   private magnifierCircle: Element;

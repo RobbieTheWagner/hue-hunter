@@ -27,13 +27,12 @@ export class RustSamplerManager {
   private forceKillTimeout: NodeJS.Timeout | null = null;
 
   private getBinaryPath(): string {
+    const ext = process.platform === 'win32' ? '.exe' : '';
+    
     if (isDev) {
-      // In development, use the debug build
-      const ext = process.platform === 'win32' ? '.exe' : '';
+      // In development, use the debug build from rust-sampler/target/debug
       return join(
         app.getAppPath(),
-        'node_modules',
-        'hue-hunter',
         'rust-sampler',
         'target',
         'debug',
@@ -41,7 +40,6 @@ export class RustSamplerManager {
       );
     } else {
       // In production, binary is in resources
-      const ext = process.platform === 'win32' ? '.exe' : '';
       const resourcesPath = process.resourcesPath;
       return join(resourcesPath, `hue-hunter-sampler${ext}`);
     }

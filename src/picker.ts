@@ -97,9 +97,14 @@ export class ColorPicker {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        preload: join(__dirname, '../renderer/preload.js'),
+        devTools: isDev,
+        preload: join(__dirname, 'magnifier-preload.js'),
       },
     });
+
+    if (isDev) {
+      this.magnifierWindow.webContents.openDevTools({ mode: 'detach' });
+    }
 
     // Set to screen-saver level
     this.magnifierWindow.setAlwaysOnTop(true, 'screen-saver');
@@ -112,8 +117,8 @@ export class ColorPicker {
     console.log(`[Hue Hunter] Set content protection on ${process.platform}`);
 
     if (isDev) {
-      // In development, you'll need to serve the renderer files
-      await this.magnifierWindow.loadURL('http://localhost:5173/');
+      // In development, magnifier runs on port 5174
+      await this.magnifierWindow.loadURL('http://localhost:5174/');
     } else {
       const magnifierPath = join(__dirname, '../renderer/index.html');
       await this.magnifierWindow.loadFile(magnifierPath);
