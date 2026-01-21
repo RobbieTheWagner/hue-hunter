@@ -1,4 +1,4 @@
-use swach_sampler::types::{Color, ColorData, Command, PixelData, PixelSampler, Point};
+use hue_hunter_sampler::types::{Color, ColorData, Command, PixelData, PixelSampler, Point};
 
 #[test]
 fn test_color_creation() {

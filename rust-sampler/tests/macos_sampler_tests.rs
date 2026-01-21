@@ -3,7 +3,7 @@
 
 #![cfg(target_os = "macos")]
 
-use swach_sampler::types::{Color, PixelSampler, Point};
+use hue_hunter_sampler::types::{Color, PixelSampler, Point};
 
 // Note: These tests use a mock sampler because we can't easily test
 // the actual CGDisplay APIs in CI without a display.

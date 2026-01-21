@@ -1,7 +1,7 @@
 // Command processing and JSON parsing tests
 // These tests verify the command deserialization and error handling
 
-use swach_sampler::types::{Command, ErrorResponse, PixelData, ColorData, Point};
+use hue_hunter_sampler::types::{Command, ErrorResponse, PixelData, ColorData, Point};
 use serde_json;
 
 #[test]

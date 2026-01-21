@@ -3,7 +3,7 @@
 
 #![cfg(target_os = "windows")]
 
-use swach_sampler::types::{Color, PixelSampler, Point};
+use hue_hunter_sampler::types::{Color, PixelSampler, Point};
 
 // Mock Windows sampler for testing logic without requiring actual Windows APIs
 struct MockWindowsSampler {

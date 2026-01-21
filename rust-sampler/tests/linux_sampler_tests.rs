@@ -3,7 +3,7 @@
 
 #![cfg(all(target_os = "linux", feature = "x11"))]
 
-use swach_sampler::types::{Color, PixelSampler, Point};
+use hue_hunter_sampler::types::{Color, PixelSampler, Point};
 
 // Mock Linux X11 sampler for testing
 struct MockLinuxSampler {

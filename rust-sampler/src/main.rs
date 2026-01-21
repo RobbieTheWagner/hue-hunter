@@ -23,7 +23,7 @@ fn run() -> Result<(), String> {
     use std::sync::mpsc::{channel, Receiver};
     use std::thread;
     
-    eprintln!("Swach pixel sampler starting...");
+    eprintln!("Hue Hunter pixel sampler starting...");
     
     let mut sampler = create_sampler()?;
     eprintln!("Sampler created successfully");
