@@ -1,7 +1,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
 import isDev from 'electron-is-dev';
 
 import { RustSamplerManager, type PixelData } from './manager.js';
@@ -98,7 +98,13 @@ export class ColorPicker {
         nodeIntegration: false,
         contextIsolation: true,
         devTools: isDev,
-        preload: join(__dirname, 'magnifier-preload.js'),
+        preload: join(
+          app.getAppPath(),
+          'node_modules',
+          'hue-hunter',
+          'renderer',
+          'preload.js'
+        ),
       },
     });
 
@@ -115,8 +121,14 @@ export class ColorPicker {
     if (process.env.INTERNAL_DEV === 'true') {
       await this.magnifierWindow.loadURL('http://localhost:5174/');
     } else {
-      // Use built files when used as a dependency or in production
-      const magnifierPath = join(__dirname, '../renderer/index.html');
+      // Use built files - construct path from app root
+      const magnifierPath = join(
+        app.getAppPath(),
+        'node_modules',
+        'hue-hunter',
+        'renderer',
+        'index.html'
+      );
       await this.magnifierWindow.loadFile(magnifierPath);
     }
 
