@@ -70,7 +70,6 @@ export class RustSamplerManager {
     onError: ErrorCallback
   ): Promise<void> {
     if (this.process) {
-      console.warn('[HueHunter] Process already running, stopping first');
       await this.stop();
     }
 
@@ -78,7 +77,6 @@ export class RustSamplerManager {
     this.errorCallback = onError;
 
     const binaryPath = this.getBinaryPath();
-    console.log('[HueHunter] Spawning process:', binaryPath);
 
     this.process = spawn(binaryPath, [], {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -144,9 +142,6 @@ export class RustSamplerManager {
     });
 
     this.process.on('exit', (code: number | null, signal: string | null) => {
-      console.log(
-        `[HueHunter] Process exited with code ${code}, signal ${signal}`
-      );
       this.process = null;
     });
 
@@ -243,7 +238,6 @@ export class RustSamplerManager {
       // Give it a moment to clean up, then force kill if needed
       this.forceKillTimeout = setTimeout(() => {
         if (proc && !proc.killed) {
-          console.log('[HueHunter] Force killing process');
           proc.kill('SIGTERM');
           // Resolve after force kill
           setTimeout(() => resolve(), 100);

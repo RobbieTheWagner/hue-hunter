@@ -94,19 +94,12 @@ export class ColorPicker {
         'index.html'
       );
 
-      console.log('[HueHunter] process.cwd():', process.cwd());
-      console.log('[HueHunter] Checking depPath:', depPath);
-      console.log('[HueHunter] depPath exists:', existsSync(depPath));
-
       if (existsSync(depPath)) {
-        console.log('[HueHunter] Using depPath:', depPath);
         return depPath;
       }
 
       // Fallback to local path (when hue-hunter is the main app)
-      const fallbackPath = join(process.cwd(), '.vite', 'renderer', 'index.html');
-      console.log('[HueHunter] Using fallbackPath:', fallbackPath);
-      return fallbackPath;
+      return join(process.cwd(), '.vite', 'renderer', 'index.html');
     } else {
       // In packaged production app, renderer is in resources
       return join(process.resourcesPath, 'app.asar', '.vite', 'renderer', 'index.html');
@@ -143,8 +136,6 @@ export class ColorPicker {
     const display = screen.getDisplayNearestPoint(cursorPos);
 
     const preloadPath = this.getPreloadPath();
-    console.log('[HueHunter] Preload path:', preloadPath);
-    console.log('[HueHunter] Preload exists:', existsSync(preloadPath));
 
     this.magnifierWindow = new BrowserWindow({
       x: display.bounds.x,
@@ -168,11 +159,6 @@ export class ColorPicker {
       },
     });
 
-    // Log console messages from renderer
-    this.magnifierWindow.webContents.on('console-message', (_event, level, message) => {
-      console.log(`[HueHunter Renderer] ${message}`);
-    });
-
     // Set to screen-saver level
     this.magnifierWindow.setAlwaysOnTop(true, 'screen-saver');
 
@@ -189,12 +175,10 @@ export class ColorPicker {
       // Use loadURL with file:// protocol so relative asset paths resolve correctly
       const rendererPath = this.getRendererPath();
       const url = pathToFileURL(rendererPath).toString();
-      console.log('[HueHunter] Loading URL:', url);
       await this.magnifierWindow.loadURL(url);
     }
 
     this.magnifierWindow.show();
-    console.log('[HueHunter] Magnifier window shown');
   }
 
   private startColorPicking(): Promise<string | null> {
@@ -229,7 +213,6 @@ export class ColorPicker {
       // Handle window close (Alt+F4, close button, etc.)
       if (this.magnifierWindow && !this.magnifierWindow.isDestroyed()) {
         this.magnifierWindow.once('closed', () => {
-          console.log('[Hue Hunter] Window closed externally');
           resolveOnce(null);
         });
       }
@@ -271,7 +254,6 @@ export class ColorPicker {
 
       // Set up data callback for the sampler
       const dataCallback = (pixelData: PixelData) => {
-        console.log('[HueHunter] Got pixel data, cursor:', pixelData.cursor);
         // Update current color
         currentColor = pixelData.center.hex;
 
@@ -306,7 +288,6 @@ export class ColorPicker {
       // Start the Rust sampler if not already running
       // (it may already be running from ensureStarted)
       if (!this.samplerManager.isRunning()) {
-        console.log('[Hue Hunter] Starting sampler (not yet running)');
         this.samplerManager
           .start(
             this.gridSize,
