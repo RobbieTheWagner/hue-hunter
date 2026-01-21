@@ -110,7 +110,6 @@ export class ColorPicker {
     // Windows: Uses WDA_EXCLUDEFROMCAPTURE (Windows 10 2004+) - should work
     // Linux: Limited/no support depending on compositor
     this.magnifierWindow.setContentProtection(true);
-    console.log(`[Hue Hunter] Set content protection on ${process.platform}`);
 
     if (isDev) {
       // In development, magnifier runs on port 5174

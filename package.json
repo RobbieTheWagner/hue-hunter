@@ -53,10 +53,8 @@
     "electron": ">=28.0.0"
   },
   "dependencies": {
-    "electron-is-dev": "^3.0.1"
-  },
-  "optionalDependencies": {
     "color-name-list": "^14.27.0",
+    "electron-is-dev": "^3.0.1",
     "nearest-color": "^0.4.4"
   },
   "devDependencies": {

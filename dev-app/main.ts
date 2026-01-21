@@ -1,24 +1,29 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { colornames } from 'color-name-list';
 import isDev from 'electron-is-dev';
+import nearestColor from 'nearest-color';
 
 import { ColorPicker } from '../src/picker.js';
+
+// Set up color name lookup
+const namedColors = colornames.reduce(
+  (o: { [key: string]: string }, { name, hex }: { name: string; hex: string }) => 
+    Object.assign(o, { [name]: hex }),
+  {}
+);
+const nearestColorFn = nearestColor.from(namedColors);
+const colorNameFn = ({ r, g, b }: { r: number; g: number; b: number }) => nearestColorFn({ r, g, b }).name;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-console.log('[Dev App] Main process starting...');
-console.log('[Dev App] isDev:', isDev);
-console.log('[Dev App] __dirname:', __dirname);
-
 // Create main window
 let mainWindow: BrowserWindow | null = null;
-const colorPicker = new ColorPicker();
+const colorPicker = new ColorPicker({ colorNameFn });
 
 function createWindow() {
-  console.log('[Dev App] Creating window...');
-  
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
@@ -28,8 +33,6 @@ function createWindow() {
       preload: join(__dirname, 'preload.js'),
     },
   });
-
-  console.log('[Dev App] Loading URL...');
   
   // Load the index.html
   const devAppDir = resolve(__dirname, '..', 'renderer', 'main_window');
