@@ -202,7 +202,7 @@ Launches the magnifying color picker and waits for user selection.
 
 ```bash
 # Clone the repository
-git clone https://github.com/shipshapecode/hue-hunter.git
+git clone https://github.com/RobbieTheWagner/hue-hunter.git
 cd hue-hunter
 
 # Install dependencies

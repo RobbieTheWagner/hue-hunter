@@ -41,12 +41,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/shipshapecode/hue-hunter.git"
+    "url": "https://github.com/RobbieTheWagner/hue-hunter.git"
   },
   "author": {
-    "name": "Ship Shape Consulting LLC",
-    "email": "hello@shipshape.io",
-    "url": "https://shipshape.io"
+    "name": "Robbie Wagner",
+    "email": "rwwagner90@gmail.com",
+    "url": "https://robbiethewagner.dev"
   },
   "license": "MIT",
   "peerDependencies": {
@@ -69,6 +69,7 @@
     "vite": "^7.3.1",
     "vitest": "^4.0.16"
   },
+  "packageManager": "pnpm@10.27.0",
   "engines": {
     "node": ">=18.0.0"
   }
