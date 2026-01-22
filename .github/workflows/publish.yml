@@ -33,6 +33,8 @@ jobs:
           node-version: 24
           registry-url: 'https://registry.npmjs.org'
           cache: pnpm
+      - name: Install Linux build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libpipewire-0.3-dev pkg-config
       - run: npm install -g npm@latest # ensure that the globally installed npm is new enough to support OIDC
       - run: pnpm install --frozen-lockfile
       - name: Publish to NPM
