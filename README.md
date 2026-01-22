@@ -210,11 +210,13 @@ Launches the magnifying color picker and waits for user selection.
 ### Linux ✅
 
 #### X11
+
 - Direct pixel sampling via X11 APIs
 - No permissions required
 - Best performance
 
 #### Wayland
+
 - Uses XDG Desktop Portal + PipeWire for screen capture
 - One-time permission dialog (token saved to `~/.local/share/hue-hunter/screencast-token`)
 - Requires PipeWire 0.3+ (standard on modern distros)

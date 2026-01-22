@@ -77,7 +77,6 @@ The project has three distinct layers that communicate via IPC:
    - `manager.ts`: `RustSamplerManager` - spawns and communicates with Rust binary via stdin/stdout JSON
    - Creates fullscreen transparent magnifier window
    - Handles user input (click, escape, scroll wheel)
-   
 2. **Rust Binary** - `rust-sampler/`
    - Platform-specific pixel sampling (macOS: Core Graphics, Windows: GDI, Linux: X11/Wayland)
    - Runs as a child process, communicates via JSON over stdin/stdout
@@ -114,7 +113,8 @@ Renderer (updates UI)
 ### Platform-Specific Notes
 
 **Linux**: Rust binary requires build dependencies:
-- X11: `libx11-dev` 
+
+- X11: `libx11-dev`
 - Wayland: `libpipewire-0.3-dev`
 - Both enabled by default via Cargo features
 
@@ -142,6 +142,7 @@ Renderer (updates UI)
 ### Testing the Full Flow
 
 The library is designed to be used within an Electron app. Testing requires:
+
 1. Build all components: `pnpm build`
 2. Integrate into an Electron app that uses the library
 3. On Wayland: Permission dialog appears on first run
@@ -177,6 +178,7 @@ dist/             # Build output (gitignored)
 ### Binary Path Resolution
 
 The manager resolves the Rust binary path differently in dev vs production:
+
 - Dev: `node_modules/hue-hunter/rust-sampler/target/debug/hue-hunter-sampler`
 - Prod: `<resourcesPath>/hue-hunter-sampler`
 
@@ -189,8 +191,9 @@ Consumer apps must bundle the binary using Electron Forge `extraResource` config
 ### Grid Size Calculation
 
 Grid size is dynamically calculated based on magnifier diameter and square size:
+
 ```typescript
-gridSize = calculateGridSize(diameter, squareSize)
+gridSize = calculateGridSize(diameter, squareSize);
 ```
 
 Users can zoom the diameter (scroll) or density (alt+scroll). Grid size updates are sent to Rust via `update_grid` command.
@@ -201,13 +204,15 @@ When packaging this library with an Electron app:
 
 1. Build the Rust binary: `pnpm build:rust`
 2. Add to Forge config:
+
 ```typescript
 packagerConfig: {
   extraResource: [
     process.platform === 'win32'
       ? 'node_modules/hue-hunter/rust-sampler/target/release/hue-hunter-sampler.exe'
-      : 'node_modules/hue-hunter/rust-sampler/target/release/hue-hunter-sampler'
-  ]
+      : 'node_modules/hue-hunter/rust-sampler/target/release/hue-hunter-sampler',
+  ];
 }
 ```
+
 3. Consider adding a prepackage script to ensure binary is built

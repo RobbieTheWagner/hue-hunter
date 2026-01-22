@@ -28,12 +28,12 @@ jobs:
           node-version: 24
           cache: 'pnpm'
       - run: pnpm install
-      
+
       # Run tests with platform-specific features
       - name: Run Rust tests (Linux)
         if: runner.os == 'Linux'
         run: cd rust-sampler && cargo test --features x11,wayland
-      
+
       - name: Run Rust tests (macOS/Windows)
         if: runner.os != 'Linux'
         run: cd rust-sampler && cargo test

@@ -1,0 +1,11 @@
+# compiled output
+/dist/
+/dev-app/dist/
+
+# misc
+/coverage/
+!.*
+.*/
+/pnpm-lock.yaml
+CHANGELOG.md
+*.md

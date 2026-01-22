@@ -9,12 +9,15 @@ import { ColorPicker } from '../src/picker.js';
 
 // Set up color name lookup
 const namedColors = colornames.reduce(
-  (o: { [key: string]: string }, { name, hex }: { name: string; hex: string }) => 
-    Object.assign(o, { [name]: hex }),
+  (
+    o: { [key: string]: string },
+    { name, hex }: { name: string; hex: string }
+  ) => Object.assign(o, { [name]: hex }),
   {}
 );
 const nearestColorFn = nearestColor.from(namedColors);
-const colorNameFn = ({ r, g, b }: { r: number; g: number; b: number }) => nearestColorFn({ r, g, b }).name;
+const colorNameFn = ({ r, g, b }: { r: number; g: number; b: number }) =>
+  nearestColorFn({ r, g, b }).name;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -33,19 +36,19 @@ function createWindow() {
       preload: join(__dirname, 'preload.js'),
     },
   });
-  
+
   // Load the index.html
   const devAppDir = resolve(__dirname, '..', 'renderer', 'main_window');
   const devAppURL = isDev
     ? 'http://localhost:5173'
     : pathToFileURL(join(devAppDir, 'index.html')).toString();
-  
+
   void mainWindow.loadURL(devAppURL);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
-  
+
   console.log('[Dev App] Window created successfully');
 }
 

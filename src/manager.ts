@@ -30,7 +30,7 @@ export class RustSamplerManager {
   private getBinaryPath(): string {
     const ext = process.platform === 'win32' ? '.exe' : '';
     const binaryName = `hue-hunter-sampler${ext}`;
-    
+
     if (isDev) {
       // Try node_modules first (when used as a dependency)
       // Always use release binary for dependencies
@@ -43,11 +43,11 @@ export class RustSamplerManager {
         'release',
         binaryName
       );
-      
+
       if (existsSync(depPath)) {
         return depPath;
       }
-      
+
       // Fallback to local path (when hue-hunter is the main app being developed)
       return join(
         app.getAppPath(),
@@ -95,10 +95,7 @@ export class RustSamplerManager {
           proc.kill('SIGKILL');
         }
       } catch (killError) {
-        console.error(
-          '[HueHunter] Failed to kill leaked process:',
-          killError
-        );
+        console.error('[HueHunter] Failed to kill leaked process:', killError);
       }
 
       this.errorCallback?.(error);

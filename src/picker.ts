@@ -6,7 +6,10 @@ import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
 import isDev from 'electron-is-dev';
 
 import { RustSamplerManager, type PixelData } from './manager.js';
-import { calculateGridSize } from './utils/grid-calculation.js';
+import {
+  calculateGridSize,
+  calculateBufferedGridSize,
+} from './utils/grid-calculation.js';
 import { adjustSquareSize, getNextDiameter } from './utils/utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -18,13 +21,13 @@ export interface ColorPickerOptions {
    * If not provided, "Unknown" will be used for all colors.
    */
   colorNameFn?: (rgb: { r: number; g: number; b: number }) => string;
-  
+
   /**
    * Initial diameter of the magnifier circle in pixels.
    * @default 180
    */
   initialDiameter?: number;
-  
+
   /**
    * Initial size of each pixel square in the grid.
    * @default 20
@@ -38,13 +41,18 @@ export class ColorPicker {
   private samplerManager: RustSamplerManager;
   private magnifierDiameter: number;
   private squareSize: number;
-  private gridSize: number;
+  private gridSize: number; // Display grid size (what renderer shows)
+  private samplerGridSize: number; // Buffered grid size (what Rust samples)
   private colorNameFn: (rgb: { r: number; g: number; b: number }) => string;
 
   constructor(options: ColorPickerOptions = {}) {
     this.magnifierDiameter = options.initialDiameter ?? 180;
     this.squareSize = options.initialSquareSize ?? 20;
     this.gridSize = calculateGridSize(this.magnifierDiameter, this.squareSize);
+    this.samplerGridSize = calculateBufferedGridSize(
+      this.magnifierDiameter,
+      this.squareSize
+    );
     this.colorNameFn = options.colorNameFn ?? (() => 'Unknown');
     this.samplerManager = new RustSamplerManager();
   }
@@ -78,7 +86,13 @@ export class ColorPicker {
       return join(process.cwd(), '.vite', 'renderer', 'preload.mjs');
     } else {
       // In packaged production app, preload is in resources
-      return join(process.resourcesPath, 'app.asar', '.vite', 'renderer', 'preload.mjs');
+      return join(
+        process.resourcesPath,
+        'app.asar',
+        '.vite',
+        'renderer',
+        'preload.mjs'
+      );
     }
   }
 
@@ -102,7 +116,13 @@ export class ColorPicker {
       return join(process.cwd(), '.vite', 'renderer', 'index.html');
     } else {
       // In packaged production app, renderer is in resources
-      return join(process.resourcesPath, 'app.asar', '.vite', 'renderer', 'index.html');
+      return join(
+        process.resourcesPath,
+        'app.asar',
+        '.vite',
+        'renderer',
+        'index.html'
+      );
     }
   }
 
@@ -120,7 +140,8 @@ export class ColorPicker {
     try {
       // Pre-start the sampler to trigger permission dialogs BEFORE showing magnifier
       // This is critical on Wayland where the permission dialog needs to be clickable
-      await this.samplerManager.ensureStarted(this.gridSize, 15);
+      // Use buffered grid size for sampling to ensure smooth zoom transitions
+      await this.samplerManager.ensureStarted(this.samplerGridSize, 15);
       await this.createMagnifierWindow();
       return await this.startColorPicking();
     } catch (error) {
@@ -229,9 +250,13 @@ export class ColorPicker {
             this.magnifierDiameter,
             this.squareSize
           );
+          this.samplerGridSize = calculateBufferedGridSize(
+            this.magnifierDiameter,
+            this.squareSize
+          );
 
-          // Update grid size in Rust sampler
-          this.samplerManager.updateGridSize(this.gridSize);
+          // Update grid size in Rust sampler (use buffered size)
+          this.samplerManager.updateGridSize(this.samplerGridSize);
         }
       });
 
@@ -244,9 +269,13 @@ export class ColorPicker {
             this.magnifierDiameter,
             this.squareSize
           );
+          this.samplerGridSize = calculateBufferedGridSize(
+            this.magnifierDiameter,
+            this.squareSize
+          );
 
-          // Update grid size in Rust sampler
-          this.samplerManager.updateGridSize(this.gridSize);
+          // Update grid size in Rust sampler (use buffered size)
+          this.samplerManager.updateGridSize(this.samplerGridSize);
         }
       });
 
@@ -290,7 +319,7 @@ export class ColorPicker {
       if (!this.samplerManager.isRunning()) {
         this.samplerManager
           .start(
-            this.gridSize,
+            this.samplerGridSize, // Use buffered grid size
             15, // 15 Hz sample rate (realistic for screen capture)
             dataCallback,
             errorCallback
