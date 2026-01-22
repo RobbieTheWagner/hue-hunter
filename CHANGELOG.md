@@ -2,6 +2,17 @@
 
 ## Release (2026-01-22)
 
+* hue-hunter 0.4.1 (patch)
+
+#### :bug: Bug Fix
+* `hue-hunter`
+  * [#7](https://github.com/RobbieTheWagner/hue-hunter/pull/7) Fix resources paths ([@RobbieTheWagner](https://github.com/RobbieTheWagner))
+
+#### Committers: 1
+- Robbie Wagner ([@RobbieTheWagner](https://github.com/RobbieTheWagner))
+
+## Release (2026-01-22)
+
 * hue-hunter 0.4.0 (minor)
 
 #### :rocket: Enhancement
