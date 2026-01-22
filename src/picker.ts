@@ -85,14 +85,9 @@ export class ColorPicker {
       // Fallback to local path (when hue-hunter is the main app)
       return join(process.cwd(), '.vite', 'renderer', 'preload.mjs');
     } else {
-      // In packaged production app, preload is in resources
-      return join(
-        process.resourcesPath,
-        'app.asar',
-        '.vite',
-        'renderer',
-        'preload.mjs'
-      );
+      // In packaged production app, files are extracted to Resources
+      // via extraResource in the consuming app's forge config
+      return join(process.resourcesPath, '.vite', 'renderer', 'preload.mjs');
     }
   }
 
@@ -115,14 +110,9 @@ export class ColorPicker {
       // Fallback to local path (when hue-hunter is the main app)
       return join(process.cwd(), '.vite', 'renderer', 'index.html');
     } else {
-      // In packaged production app, renderer is in resources
-      return join(
-        process.resourcesPath,
-        'app.asar',
-        '.vite',
-        'renderer',
-        'index.html'
-      );
+      // In packaged production app, files are extracted to Resources
+      // via extraResource in the consuming app's forge config
+      return join(process.resourcesPath, '.vite', 'renderer', 'index.html');
     }
   }
 
