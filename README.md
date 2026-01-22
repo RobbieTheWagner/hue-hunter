@@ -31,7 +31,7 @@ On Linux, you'll need to install system dependencies for building the Rust binar
 
 ```bash
 # Ubuntu/Debian
-sudo apt install build-essential pkg-config libx11-dev libpipewire-0.3-dev
+sudo apt install build-essential pkg-config libx11-dev libpipewire-0.3-dev libspa-0.2-dev
 
 # Fedora
 sudo dnf install gcc pkg-config libX11-devel pipewire-devel
@@ -41,6 +41,30 @@ sudo pacman -S base-devel pkg-config libx11 pipewire
 ```
 
 These provide support for both X11 and Wayland. On Wayland, users will see a one-time permission dialog for screen capture.
+
+#### CI/CD Setup
+
+When using hue-hunter in CI environments (GitHub Actions, GitLab CI, etc.), you need to install the system dependencies before running `pnpm install`:
+
+```yaml
+# GitHub Actions example (.github/workflows/*.yml)
+steps:
+  - uses: actions/checkout@v4
+  - uses: dtolnay/rust-toolchain@stable
+  - uses: pnpm/action-setup@v4
+  - uses: actions/setup-node@v4
+    with:
+      node-version: 24
+      cache: 'pnpm'
+  - name: Install system dependencies (Linux)
+    if: runner.os == 'Linux'
+    run: |
+      sudo apt-get update
+      sudo apt-get install -y libx11-dev pkg-config libpipewire-0.3-dev libspa-0.2-dev
+  - run: pnpm install
+```
+
+This ensures the Rust binary builds successfully with both X11 and Wayland support during the `postinstall` hook.
 
 ## Usage
 
