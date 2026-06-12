@@ -26,8 +26,9 @@ pnpm build
 pnpm build:rust          # Build Rust binary (release mode)
 pnpm build:rust:dev      # Build Rust binary (debug mode)
 pnpm build:ts            # Build TypeScript library
-pnpm build:renderer      # Build renderer UI with Vite
 ```
+
+The magnifier renderer is built with `vite build -c vite.magnifier.config.ts` (runs as part of `pnpm build`) and outputs to `.vite/renderer/`.
 
 ### Testing
 
@@ -44,9 +45,6 @@ pnpm test:rust
 ### Code Quality
 
 ```bash
-# Lint TypeScript
-pnpm lint
-
 # Format all files
 pnpm format
 ```
@@ -86,9 +84,9 @@ The project has three distinct layers that communicate via IPC:
 
 3. **Renderer Process (UI)** - `renderer/`
    - `main.ts`: Magnifier UI logic and rendering
-   - `preload.ts`: IPC bridge between renderer and main process
+   - `magnifier-preload.ts`: IPC bridge between renderer and main process
    - Displays circular magnifier with pixel grid
-   - Built with Vite, outputs to `dist/renderer/`
+   - Built with Vite, outputs to `.vite/renderer/`
 
 ### Communication Flow
 
@@ -129,7 +127,7 @@ Renderer (updates UI)
 ### Making Changes to TypeScript
 
 1. Edit files in `src/` or `renderer/`
-2. Run `pnpm build:ts` or `pnpm build:renderer`
+2. Run `pnpm build:ts` (or `pnpm build` to also rebuild the renderer)
 3. Test changes with `pnpm test`
 
 ### Making Changes to Rust
@@ -157,7 +155,7 @@ src/              # TypeScript library source
   utils/          # Grid calculations and utilities
 renderer/         # Magnifier UI (Electron renderer)
   main.ts         # UI logic
-  preload.ts      # IPC bridge
+  magnifier-preload.ts  # IPC bridge
   index.html      # HTML structure
   styles.css      # Tailwind styles
 rust-sampler/     # Rust pixel sampler
@@ -179,7 +177,8 @@ dist/             # Build output (gitignored)
 
 The manager resolves the Rust binary path differently in dev vs production:
 
-- Dev: `node_modules/hue-hunter/rust-sampler/target/debug/hue-hunter-sampler`
+- Dev (as a dependency): `node_modules/hue-hunter/rust-sampler/target/release/hue-hunter-sampler`
+- Dev (in this repo): `rust-sampler/target/debug/hue-hunter-sampler`
 - Prod: `<resourcesPath>/hue-hunter-sampler`
 
 Consumer apps must bundle the binary using Electron Forge `extraResource` config.
