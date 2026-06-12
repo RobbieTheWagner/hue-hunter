@@ -45,6 +45,12 @@ pnpm test:rust
 ### Code Quality
 
 ```bash
+# Lint TypeScript (ESLint, flat config in eslint.config.mjs)
+pnpm lint
+
+# Lint Rust (clippy, warnings are errors in CI)
+pnpm lint:rust
+
 # Format all files
 pnpm format
 ```

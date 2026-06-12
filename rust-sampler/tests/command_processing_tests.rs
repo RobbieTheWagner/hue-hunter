@@ -2,7 +2,6 @@
 // These tests verify the command deserialization and error handling
 
 use hue_hunter_sampler::types::{Command, ErrorResponse, PixelData, ColorData, Point};
-use serde_json;
 
 #[test]
 fn test_start_command_deserialization() {

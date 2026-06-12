@@ -29,13 +29,13 @@ fn test_platform_specific_compilation() {
 #[cfg(target_os = "macos")]
 #[test]
 fn test_macos_sampler_available() {
-    assert!(true, "macOS platform detected");
+    assert_eq!(std::env::consts::OS, "macos");
 }
 
 #[cfg(target_os = "windows")]
 #[test]
 fn test_windows_sampler_available() {
-    assert!(true, "Windows platform detected");
+    assert_eq!(std::env::consts::OS, "windows");
 }
 
 #[cfg(target_os = "linux")]
@@ -46,21 +46,12 @@ fn test_linux_platform_detected() {
 
 #[test]
 fn test_feature_flags_compilation() {
-    // Test that feature flags work correctly
-    #[cfg(feature = "wayland")]
-    {
-        assert!(true, "Wayland feature is enabled");
-    }
-
-    #[cfg(feature = "x11")]
-    {
-        assert!(true, "X11 feature is enabled");
-    }
-
-    // At least one should be true when running tests
-    #[cfg(not(any(feature = "wayland", feature = "x11")))]
-    {
-        // It's okay if neither is enabled - tests can still run
-        assert!(true, "No features enabled");
-    }
+    // Smoke test: feature-gated code compiles in every feature combination
+    let enabled_features: &[&str] = &[
+        #[cfg(feature = "wayland")]
+        "wayland",
+        #[cfg(feature = "x11")]
+        "x11",
+    ];
+    assert!(enabled_features.len() <= 2);
 }

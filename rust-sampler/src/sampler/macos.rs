@@ -142,10 +142,10 @@ impl PixelSampler for MacOSSampler {
 
         let data = image.data();
         let bytes_per_row = image.bytes_per_row();
-        let image_width = image.width() as usize;
-        let image_height = image.height() as usize;
+        let image_width = image.width();
+        let image_height = image.height();
         let bits_per_pixel = image.bits_per_pixel();
-        let bytes_per_pixel = (bits_per_pixel / 8) as usize;
+        let bytes_per_pixel = bits_per_pixel / 8;
         
         // Calculate scale factor - image might be 2x larger on Retina displays
         let scale_x = image_width / grid_size;

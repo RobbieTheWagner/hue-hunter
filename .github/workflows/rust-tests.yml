@@ -19,6 +19,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libpipewire-0.3-dev pkg-config
@@ -29,7 +31,15 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install
 
-      # Run tests with platform-specific features
+      # Lint and test with platform-specific features
+      - name: Run clippy (Linux)
+        if: runner.os == 'Linux'
+        run: cd rust-sampler && cargo clippy --all-targets --features x11,wayland -- -D warnings
+
+      - name: Run clippy (macOS/Windows)
+        if: runner.os != 'Linux'
+        run: cd rust-sampler && cargo clippy --all-targets -- -D warnings
+
       - name: Run Rust tests (Linux)
         if: runner.os == 'Linux'
         run: cd rust-sampler && cargo test --features x11,wayland

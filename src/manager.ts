@@ -138,7 +138,7 @@ export class RustSamplerManager {
       this.errorCallback?.(error.message);
     });
 
-    this.process.on('exit', (code: number | null, signal: string | null) => {
+    this.process.on('exit', () => {
       this.process = null;
     });
 

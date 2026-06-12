@@ -23,6 +23,8 @@ pnpm vitest run tests/grid-calculation.test.ts   # single test file
 pnpm test:rust          # cargo test in rust-sampler/
 cd rust-sampler && cargo test <name>             # single Rust test
 
+pnpm lint               # eslint . (flat config in eslint.config.mjs)
+pnpm lint:rust          # cargo clippy --all-targets -- -D warnings (warnings fail CI)
 pnpm format             # prettier --write .
 ```
 

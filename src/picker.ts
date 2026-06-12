@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
+import { BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
 import isDev from 'electron-is-dev';
 
 import { RustSamplerManager, type PixelData } from './manager.js';
