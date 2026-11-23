@@ -28,6 +28,7 @@ pub fn create_sampler() -> Result<Box<dyn PixelSampler>, String> {
 
     #[cfg(target_os = "linux")]
     {
+        let mut failures: Vec<String> = Vec::new();
         // Try X11 direct capture first (best performance)
         #[cfg(feature = "x11")]
         {
@@ -35,9 +36,7 @@ pub fn create_sampler() -> Result<Box<dyn PixelSampler>, String> {
                 Ok(sampler) => {
                     return Ok(Box::new(sampler));
                 }
-                Err(e) => {
-                    eprintln!("X11 capture unavailable: {}", e);
-                }
+                Err(e) => failures.push(format!("X11: {}", e)),
             }
         }
 
@@ -46,16 +45,17 @@ pub fn create_sampler() -> Result<Box<dyn PixelSampler>, String> {
         {
             match WaylandPortalSampler::new() {
                 Ok(sampler) => return Ok(Box::new(sampler)),
-                Err(e) => {
-                    eprintln!("✗ Wayland Portal sampler failed: {}", e);
-                }
+                Err(e) => failures.push(format!("Wayland: {}", e)),
             }
         }
 
-        Err(
-            "No screen capture method available. Build with --features x11 or --features wayland"
-                .to_string(),
-        )
+        if failures.is_empty() {
+            failures.push("built without the x11 or wayland feature".to_string());
+        }
+        Err(format!(
+            "No screen capture method available. {}",
+            failures.join("; ")
+        ))
     }
 
     #[cfg(target_os = "windows")]

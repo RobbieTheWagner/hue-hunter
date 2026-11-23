@@ -200,7 +200,12 @@ export class RustSamplerManager {
     this.dataCallback = null;
     this.errorCallback = null;
 
-    if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
+    const exited =
+      !proc ||
+      proc.pid === undefined ||
+      proc.exitCode !== null ||
+      proc.signalCode !== null;
+    if (exited) {
       return Promise.resolve();
     }
 

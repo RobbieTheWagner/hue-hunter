@@ -21,20 +21,17 @@ use std::time::Duration;
 
 const FRAME_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Treats XWayland cursor coordinates as frame pixel coordinates, which holds for a
+/// single monitor without scaling. Multi-monitor offsets and HiDPI scaling are not
+/// handled because XWayland's coordinate space differs between compositors.
 pub struct WaylandPortalSampler {
     display: XDisplay,
     frame: Frame,
-    /// Top-left of the captured monitor in compositor coordinates.
-    origin: (i32, i32),
-    /// Frame pixels per compositor coordinate unit (2.0 on a 2x HiDPI monitor).
-    scale: f64,
 }
 
 struct Stream {
     fd: OwnedFd,
     node_id: u32,
-    position: Option<(i32, i32)>,
-    size: Option<(i32, i32)>,
 }
 
 impl WaylandPortalSampler {
@@ -49,7 +46,7 @@ impl WaylandPortalSampler {
             .build()
             .map_err(|e| format!("Failed to create async runtime: {}", e))?;
 
-        let (frame, position, size) = runtime.block_on(async {
+        let frame = runtime.block_on(async {
             let screencast = Screencast::new()
                 .await
                 .map_err(|e| format!("Failed to connect to screencast portal: {}", e))?;
@@ -90,36 +87,21 @@ impl WaylandPortalSampler {
                 .open_pipe_wire_remote(&session)
                 .await
                 .map_err(|e| format!("Failed to open PipeWire remote: {}", e))?;
-            let stream = Stream {
+            let frame = capture_frame(Stream {
                 fd,
                 node_id: info.pipe_wire_node_id(),
-                position: info.position(),
-                size: info.size(),
-            };
-            let (position, size) = (stream.position, stream.size);
-            let frame = capture_frame(stream);
+            });
             let _ = session.close().await;
-            Ok::<_, String>((frame?, position, size))
+            frame
         })?;
 
-        let scale = match size {
-            Some((width, _)) if width > 0 => frame.width() as f64 / width as f64,
-            _ => 1.0,
-        };
         eprintln!(
-            "Captured Wayland frame: {}x{} at {:?}, scale {}",
+            "Captured Wayland frame: {}x{}",
             frame.width(),
-            frame.height(),
-            position,
-            scale
+            frame.height()
         );
 
-        Ok(WaylandPortalSampler {
-            display,
-            frame,
-            origin: position.unwrap_or((0, 0)),
-            scale,
-        })
+        Ok(WaylandPortalSampler { display, frame })
     }
 }
 
@@ -134,14 +116,7 @@ impl PixelSampler for WaylandPortalSampler {
         center_y: i32,
         grid_size: usize,
     ) -> Result<Vec<Vec<Color>>, String> {
-        let to_frame =
-            |value: i32, origin: i32| ((value - origin) as f64 * self.scale).round() as i32;
-        Ok(self.frame.grid(
-            to_frame(center_x, self.origin.0),
-            to_frame(center_y, self.origin.1),
-            grid_size,
-            (self.scale.round() as i32).max(1),
-        ))
+        Ok(self.frame.grid(center_x, center_y, grid_size, 1))
     }
 }
 

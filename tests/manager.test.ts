@@ -39,7 +39,8 @@ afterEach(async () => {
   delete process.env.FAKE_SAMPLER_MODE;
 });
 
-describe('RustSamplerManager', () => {
+// The fixture runs through its shebang, which Windows can't do.
+describe.skipIf(process.platform === 'win32')('RustSamplerManager', () => {
   it('resolves ensureStarted on the first frame and keeps delivering frames', async () => {
     const sink = collect();
     await useMode('normal').ensureStarted(9, 15, sink.onData, sink.onError);
@@ -107,18 +108,35 @@ describe('RustSamplerManager', () => {
     expect(manager.isRunning()).toBe(false);
   });
 
-  it('does not throw when commands are sent after the sampler died', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+  it('survives writing to a sampler whose stdin is closed', async () => {
     const sink = collect();
-    await useMode('crash-after-data').ensureStarted(
+    await useMode('close-stdin').ensureStarted(
       9,
       15,
       sink.onData,
       sink.onError
     );
-    await until(() => !manager.isRunning());
 
-    expect(() => manager.updateGridSize(11)).not.toThrow();
+    manager.updateGridSize(11);
+    manager.updateGridSize(13);
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(manager.isRunning()).toBe(true);
+    expect(sink.data.length).toBeGreaterThan(1);
+  });
+
+  it('stop resolves when the binary failed to spawn', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    manager = new RustSamplerManager('/nonexistent/hue-hunter-sampler');
+    void manager.start(
+      9,
+      15,
+      () => {},
+      () => {}
+    );
+
+    await manager.stop();
+    expect(manager.isRunning()).toBe(false);
   });
 
   it('stop resolves and reports no error for a clean shutdown', async () => {
@@ -135,11 +153,10 @@ describe('RustSamplerManager', () => {
     await useMode('ignore-stop').ensureStarted(9, 15, sink.onData);
 
     const stoppedAt = Date.now();
+    const framesAtStop = sink.data.length;
     await manager.stop();
     expect(Date.now() - stoppedAt).toBeLessThan(1500);
-    const framesAfterStop = sink.data.length;
-    await new Promise((r) => setTimeout(r, 50));
-    expect(sink.data.length).toBe(framesAfterStop);
+    expect(sink.data.length).toBe(framesAtStop);
   });
 
   it('a stop that is not awaited does not clear the next session', async () => {

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Stands in for hue-hunter-sampler. FAKE_SAMPLER_MODE picks the behavior.
+import { closeSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
 const mode = process.env.FAKE_SAMPLER_MODE ?? 'normal';
@@ -52,7 +53,15 @@ const onStart = () => {
 
 if (mode === 'ignore-stop') process.on('SIGTERM', () => {});
 
-createInterface({ input: process.stdin }).on('line', (line) => {
+if (mode === 'close-stdin') {
+  closeSync(0);
+  gridSize = 9;
+  timer = setInterval(emit, 10);
+} else {
+  createInterface({ input: process.stdin }).on('line', onLine);
+}
+
+function onLine(line) {
   const cmd = JSON.parse(line);
   if (cmd.command === 'start') {
     gridSize = cmd.grid_size;
@@ -63,4 +72,4 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     clearInterval(timer);
     process.exit(0);
   }
-});
+}
