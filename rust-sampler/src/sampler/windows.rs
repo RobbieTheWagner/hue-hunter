@@ -137,7 +137,7 @@ impl PixelSampler for WindowsSampler {
             
             // Copy screen region to memory bitmap using BitBlt
             // This is the key optimization - ONE API call instead of grid_size^2 calls
-            if let Err(_) = BitBlt(
+            if BitBlt(
                 mem_dc,
                 0,
                 0,
@@ -147,7 +147,9 @@ impl PixelSampler for WindowsSampler {
                 x_start,
                 y_start,
                 SRCCOPY,
-            ) {
+            )
+            .is_err()
+            {
                 // BitBlt failed - clean up and fall back to default implementation
                 SelectObject(mem_dc, old_bitmap);
                 let _ = DeleteObject(bitmap);
@@ -164,7 +166,7 @@ impl PixelSampler for WindowsSampler {
                     biHeight: -height, // Negative for top-down DIB
                     biPlanes: 1,
                     biBitCount: 32, // 32-bit BGRA
-                    biCompression: BI_RGB.0 as u32,
+                    biCompression: BI_RGB.0,
                     biSizeImage: 0,
                     biXPelsPerMeter: 0,
                     biYPelsPerMeter: 0,
@@ -205,7 +207,7 @@ impl PixelSampler for WindowsSampler {
                 let mut row_pixels = Vec::with_capacity(grid_size);
                 for col in 0..grid_size {
                     // Calculate offset in buffer (BGRA format, 4 bytes per pixel)
-                    let offset = ((row * grid_size + col) * 4) as usize;
+                    let offset = (row * grid_size + col) * 4;
                     
                     if offset + 3 < buffer.len() {
                         // Windows DIB format is BGRA

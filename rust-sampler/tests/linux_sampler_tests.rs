@@ -151,8 +151,7 @@ fn test_linux_sampler_multi_display() {
     // Test extended display (horizontal)
     let mut sampler = MockLinuxSampler::new(3840, 1080);
     
-    let color = sampler.sample_pixel(2500, 500).unwrap();
-    assert!(color.r <= 255);
+    assert!(sampler.sample_pixel(2500, 500).is_ok());
 }
 
 #[test]

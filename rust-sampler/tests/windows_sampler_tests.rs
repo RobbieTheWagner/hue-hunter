@@ -335,12 +335,11 @@ fn test_windows_sampler_grid_pixel_alignment() {
     
     // Check all pixels in the grid match individual samples
     let half_size = (grid_size / 2) as i32;
-    for row in 0..grid_size {
-        for col in 0..grid_size {
+    for (row, grid_row) in grid.iter().enumerate().take(grid_size) {
+        for (col, grid_color) in grid_row.iter().enumerate().take(grid_size) {
             let x = center_x + (col as i32 - half_size);
             let y = center_y + (row as i32 - half_size);
             
-            let grid_color = &grid[row][col];
             let individual_color = sampler.sample_pixel(x, y).unwrap();
             
             assert_eq!(grid_color.r, individual_color.r, "Mismatch at ({}, {})", x, y);
@@ -659,8 +658,7 @@ fn test_windows_sampler_dpi_fallback_no_duplicates() {
     
     // Collect center row colors to check for uniqueness
     let mut center_row_colors: Vec<(u8, u8, u8)> = Vec::new();
-    for col in 0..grid_size {
-        let color = &grid[4][col]; // Center row
+    for color in grid[4].iter().take(grid_size) { // Center row
         center_row_colors.push((color.r, color.g, color.b));
     }
     
