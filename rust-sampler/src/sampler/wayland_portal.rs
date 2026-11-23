@@ -15,7 +15,6 @@
 use crate::types::{Color, PixelSampler, Point};
 use ashpd::desktop::screencast::{CursorMode, Screencast, SourceType};
 use ashpd::desktop::PersistMode;
-use ashpd::WindowIdentifier;
 use pipewire as pw;
 use std::sync::{Arc, Mutex};
 
@@ -127,7 +126,7 @@ impl WaylandPortalSampler {
             
             // Start the screencast
             let start_request = screencast
-                .start(&session, &WindowIdentifier::default())
+                .start(&session, None)
                 .await
                 .map_err(|e| format!("Failed to start screencast: {}", e))?;
             
