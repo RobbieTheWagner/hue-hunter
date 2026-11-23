@@ -4,7 +4,7 @@ import {
   calculateActualSquareSize,
   calculateGridSize,
 } from '../src/utils/grid-calculation';
-import { calculatePixelUpdatesWithMismatch } from '../src/utils/pixel-grid-utils';
+import { centerGrid } from '../src/utils/pixel-grid-utils';
 import type { PixelGridData, PositionData } from '../src/types';
 
 class MagnifierRenderer {
@@ -19,6 +19,8 @@ class MagnifierRenderer {
   private lastDiameterZoomTime = 0;
   private readonly DIAMETER_ZOOM_THROTTLE_MS = 300;
   private hasShownCircle = false;
+  private pixels: HTMLElement[] = [];
+  private shownHex: string[] = [];
 
   // Derived state - calculated from diameter and square size
   private get currentGridSize(): number {
@@ -92,6 +94,8 @@ class MagnifierRenderer {
 
         this.pixelGrid.appendChild(pixel);
       }
+      this.pixels = Array.from(this.pixelGrid.children) as HTMLElement[];
+      this.shownHex = [];
     } else {
       // Same number of pixels, just update center class
       for (let i = 0; i < totalPixels; i++) {
@@ -219,26 +223,16 @@ class MagnifierRenderer {
         this.updateMagnifierSize(this.currentDiameter);
       }
 
-      // Update pixel colors using proper coordinate mapping
-      if (data.pixels && data.pixels.length > 0) {
-        const incomingDataSize = data.pixels.length;
-
-        // Calculate which pixels need to be updated with proper coordinate mapping
-        // This handles size mismatches during transitions by centering smaller grids
-        const updates = calculatePixelUpdatesWithMismatch(
-          data.pixels,
-          incomingDataSize,
-          this.lastRenderedGridSize
-        );
-
-        // Apply all updates
-        for (const update of updates) {
-          const pixel = document.getElementById(update.pixelId);
-          if (pixel) {
-            pixel.style.backgroundColor = update.color.hex;
+      const size = this.lastRenderedGridSize;
+      centerGrid(data.pixels, size).forEach((row, r) =>
+        row.forEach((color, c) => {
+          const index = r * size + c;
+          if (color && this.shownHex[index] !== color.hex) {
+            this.shownHex[index] = color.hex;
+            this.pixels[index]!.style.backgroundColor = color.hex;
           }
-        }
-      }
+        })
+      );
     });
   }
 }

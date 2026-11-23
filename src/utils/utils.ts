@@ -5,20 +5,19 @@ export const MIN_SQUARE_SIZE = 10;
 export const MAX_SQUARE_SIZE = 40;
 
 /**
- * Get the next diameter in the available diameters list.
- * Returns the current diameter if already at the boundary.
+ * The next listed diameter above (delta > 0) or below (delta < 0) the current one.
+ * A current diameter that isn't in the list, such as a custom initialDiameter,
+ * moves to its nearest listed neighbor in that direction.
  */
 export function getNextDiameter(
   currentDiameter: number,
   delta: number
 ): number {
-  const currentIndex = AVAILABLE_DIAMETERS.indexOf(currentDiameter);
-  const newIndex = Math.max(
-    0,
-    Math.min(AVAILABLE_DIAMETERS.length - 1, currentIndex + delta)
-  );
-
-  return AVAILABLE_DIAMETERS[newIndex]!;
+  const next =
+    delta > 0
+      ? AVAILABLE_DIAMETERS.find((d) => d > currentDiameter)
+      : AVAILABLE_DIAMETERS.findLast((d) => d < currentDiameter);
+  return delta === 0 ? currentDiameter : (next ?? currentDiameter);
 }
 
 /**

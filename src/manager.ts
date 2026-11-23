@@ -21,13 +21,24 @@ type SamplerResponse = PixelData | ErrorResponse;
 type SamplerCallback = (data: PixelData) => void;
 type ErrorCallback = (error: string) => void;
 
+const START_TIMEOUT_MS = 30_000;
+
 export class RustSamplerManager {
   private process: ChildProcess | null = null;
   public dataCallback: SamplerCallback | null = null;
   public errorCallback: ErrorCallback | null = null;
-  private forceKillTimeout: NodeJS.Timeout | null = null;
+
+  /**
+   * @param binaryPath Path to the hue-hunter-sampler binary. Defaults to the
+   * dev or packaged location described in the README.
+   */
+  constructor(private readonly binaryPath?: string) {}
 
   private getBinaryPath(): string {
+    if (this.binaryPath) {
+      return this.binaryPath;
+    }
+
     const ext = process.platform === 'win32' ? '.exe' : '';
     const binaryName = `hue-hunter-sampler${ext}`;
 
@@ -76,198 +87,138 @@ export class RustSamplerManager {
     this.dataCallback = onData;
     this.errorCallback = onError;
 
-    const binaryPath = this.getBinaryPath();
-
-    this.process = spawn(binaryPath, [], {
+    const proc = spawn(this.getBinaryPath(), [], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+    this.process = proc;
 
-    if (!this.process.stdout || !this.process.stdin || !this.process.stderr) {
-      const error = 'Failed to create process stdio streams';
-      console.error('[HueHunter]', error);
+    // Writing to a sampler that already died emits EPIPE here. The exit
+    // handler reports the death, so don't let the write error crash the app.
+    proc.stdin.on('error', () => {});
 
-      // Clean up the leaked process
-      const proc = this.process;
-      this.process = null;
-
-      try {
-        if (proc && !proc.killed) {
-          proc.kill('SIGKILL');
-        }
-      } catch (killError) {
-        console.error('[HueHunter] Failed to kill leaked process:', killError);
-      }
-
-      this.errorCallback?.(error);
-      return;
-    }
-
-    // Set up data handlers
     let buffer = '';
-    this.process.stdout.on('data', (data: Buffer) => {
+    proc.stdout.on('data', (data: Buffer) => {
       buffer += data.toString();
-
-      // Process complete JSON lines
       const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // Keep incomplete line in buffer
+      buffer = lines.pop() ?? '';
 
       for (const line of lines) {
-        if (line.trim()) {
-          try {
-            const parsed = JSON.parse(line) as SamplerResponse;
-
-            if ('error' in parsed) {
-              console.error('[HueHunter] Error:', parsed.error);
-              this.errorCallback?.(parsed.error);
-            } else {
-              this.dataCallback?.(parsed);
-            }
-          } catch (e) {
-            console.error('[HueHunter] Failed to parse JSON:', line, e);
-          }
+        if (!line.trim()) continue;
+        let parsed: SamplerResponse;
+        try {
+          parsed = JSON.parse(line) as SamplerResponse;
+        } catch {
+          console.error('[HueHunter] Ignoring malformed sampler output:', line);
+          continue;
+        }
+        if ('error' in parsed) {
+          this.errorCallback?.(parsed.error);
+        } else {
+          this.dataCallback?.(parsed);
         }
       }
     });
 
-    this.process.stderr.on('data', (data: Buffer) => {
+    proc.stderr.on('data', (data: Buffer) => {
       console.error('[HueHunter stderr]', data.toString());
     });
 
-    this.process.on('error', (error: Error) => {
-      console.error('[HueHunter] Process error:', error);
+    proc.on('error', (error: Error) => {
+      if (this.process === proc) {
+        this.process = null;
+      }
       this.errorCallback?.(error.message);
     });
 
-    this.process.on('exit', () => {
+    proc.on('exit', (code, signal) => {
+      if (this.process !== proc) {
+        return;
+      }
       this.process = null;
+      this.errorCallback?.(
+        `Sampler exited unexpectedly (${signal ?? `code ${code}`})`
+      );
     });
 
-    // Send start command
-    const startCommand = {
+    this.sendCommand({
       command: 'start',
       grid_size: gridSize,
       sample_rate: sampleRate,
-    };
-
-    this.sendCommand(startCommand);
+    });
   }
 
   /**
-   * Ensure sampler is started and wait for first successful data callback
-   * This is useful for triggering permission dialogs before showing UI
+   * Start the sampler and resolve once the first pixel data arrives, so OS
+   * permission prompts (macOS Screen Recording, the Wayland portal) appear
+   * before any UI is shown. Rejects if the sampler reports an error, exits, or
+   * sends nothing for 30 seconds. `onData` and `onError` stay installed after
+   * the promise settles.
    */
-  async ensureStarted(gridSize: number, sampleRate: number): Promise<void> {
+  ensureStarted(
+    gridSize: number,
+    sampleRate: number,
+    onData: SamplerCallback = () => {},
+    onError: ErrorCallback = () => {}
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
-      let resolved = false;
-      const timeout = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          reject(new Error('Timeout waiting for sampler to start'));
-        }
-      }, 30000); // 30 second timeout for permission dialog
+      let settled = false;
+      const settle = (error?: string) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        if (error) reject(new Error(error));
+        else resolve();
+      };
+      const timeout = setTimeout(
+        () => settle('Timeout waiting for sampler to start'),
+        START_TIMEOUT_MS
+      );
 
-      // Start with a temporary callback that resolves on first data
       void this.start(
         gridSize,
         sampleRate,
-        () => {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timeout);
-            resolve();
-          }
+        (data) => {
+          settle();
+          onData(data);
         },
         (error) => {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timeout);
-            reject(new Error(error));
-          }
+          settle(error);
+          onError(error);
         }
       );
     });
   }
 
   updateGridSize(gridSize: number): void {
-    const command = {
-      command: 'update_grid',
-      grid_size: gridSize,
-    };
-    this.sendCommand(command);
+    this.sendCommand({ command: 'update_grid', grid_size: gridSize });
   }
 
+  /** Ask the sampler to exit, killing it if it hasn't after 500ms. */
   stop(): Promise<void> {
-    if (!this.process) {
-      return Promise.resolve();
-    }
-
     const proc = this.process;
     this.process = null;
     this.dataCallback = null;
     this.errorCallback = null;
 
+    if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
+      return Promise.resolve();
+    }
+
     return new Promise<void>((resolve) => {
-      // Set up exit handler
-      const onExit = () => {
-        if (this.forceKillTimeout) {
-          clearTimeout(this.forceKillTimeout);
-          this.forceKillTimeout = null;
-        }
+      const killTimer = setTimeout(() => proc.kill('SIGKILL'), 500);
+      proc.once('exit', () => {
+        clearTimeout(killTimer);
         resolve();
-      };
-
-      proc.once('exit', onExit);
-      proc.once('close', onExit);
-
-      // Send stop command
-      const stopCommand = { command: 'stop' };
-      try {
-        if (proc.stdin && !proc.stdin.destroyed) {
-          const json = JSON.stringify(stopCommand);
-          proc.stdin.write(json + '\n');
-          // Close stdin to signal EOF
-          proc.stdin.end();
-        }
-      } catch (e) {
-        console.error('[HueHunter] Failed to send stop command:', e);
-      }
-
-      // Give it a moment to clean up, then force kill if needed
-      this.forceKillTimeout = setTimeout(() => {
-        if (proc && !proc.killed) {
-          proc.kill('SIGTERM');
-          // Resolve after force kill
-          setTimeout(() => resolve(), 100);
-        }
-      }, 500);
+      });
+      proc.stdin?.end(JSON.stringify({ command: 'stop' }) + '\n');
     });
   }
 
   private sendCommand(command: object): void {
-    if (!this.process) {
-      console.error('[HueHunter] Cannot send command, process is null');
-      return;
-    }
-
-    if (!this.process.stdin) {
-      console.error('[HueHunter] Cannot send command, process.stdin is null');
-      console.error('[HueHunter] Process state:', {
-        killed: this.process.killed,
-        exitCode: this.process.exitCode,
-        signalCode: this.process.signalCode,
-      });
-      return;
-    }
-
-    try {
-      const json = JSON.stringify(command);
-      this.process.stdin.write(json + '\n');
-    } catch (e) {
-      console.error('[HueHunter] Failed to send command:', e);
-    }
+    this.process?.stdin?.write(JSON.stringify(command) + '\n');
   }
 
   isRunning(): boolean {
-    return this.process !== null && !this.process.killed;
+    return this.process !== null;
   }
 }

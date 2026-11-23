@@ -15,5 +15,16 @@ export default tseslint.config(
   },
   eslint.configs.recommended,
   tseslint.configs.recommended,
-  prettier
+  prettier,
+  {
+    files: ['tests/fixtures/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        setTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+      },
+    },
+  }
 );
