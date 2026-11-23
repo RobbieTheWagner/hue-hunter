@@ -1,6 +1,16 @@
 // Linux pixel sampler using X11 direct capture
 //
-// Uses native X11 XGetImage for fast, efficient pixel sampling on X11 systems.
+// Captures the screen ONCE, before the magnifier window is shown, then serves every
+// pixel/grid request from that frozen buffer. We deliberately never re-capture during
+// a pick session: XGetImage on the root window returns the *composited* screen, which
+// under any compositing WM includes our own always-on-top magnifier overlay
+// (setContentProtection is a no-op on X11/Linux). Re-capturing would feed the magnifier
+// back into itself. This mirrors the Wayland backend (wayland_portal.rs), which freezes
+// a frame for the same reason.
+//
+// Trade-off: colors reflect the screen as it was when the pick started, so live content
+// (video, animations) under the cursor will not update mid-pick.
+//
 // For Wayland systems, see wayland_portal.rs which uses XDG Desktop Portal + PipeWire.
 
 use crate::types::{Color, PixelSampler, Point};
@@ -22,14 +32,13 @@ pub struct LinuxSampler {
     x11_display: *mut x11::xlib::Display,
     screen_width: i32,
     screen_height: i32,
-    screenshot_cache: Option<ScreenshotCache>,
+    screenshot: Option<Screenshot>,
 }
 
-struct ScreenshotCache {
+struct Screenshot {
     data: Vec<u8>,
     width: u32,
     height: u32,
-    timestamp: std::time::Instant,
 }
 
 impl LinuxSampler {
@@ -57,7 +66,7 @@ impl LinuxSampler {
                 x11_display: display,
                 screen_width,
                 screen_height,
-                screenshot_cache: None,
+                screenshot: None,
             })
         }
     }
@@ -163,28 +172,24 @@ impl LinuxSampler {
             }
             
             x11::xlib::XDestroyImage(image);
-            
-            self.screenshot_cache = Some(ScreenshotCache {
+
+            self.screenshot = Some(Screenshot {
                 data,
                 width,
                 height,
-                timestamp: std::time::Instant::now(),
             });
-            
+
             Ok(())
         }
     }
-    
-    fn ensure_fresh_screenshot(&mut self) -> Result<(), String> {
-        let needs_refresh = match &self.screenshot_cache {
-            None => true,
-            Some(cache) => cache.timestamp.elapsed().as_millis() > 50, // 50ms cache for 20 FPS
-        };
-        
-        if needs_refresh {
+
+    fn ensure_screenshot_captured(&mut self) -> Result<(), String> {
+        // Capture exactly once, before the magnifier is visible. We never re-capture
+        // during a session — see the module docs for why (self-capture of our overlay).
+        if self.screenshot.is_none() {
             self.capture_screenshot()?;
         }
-        
+
         Ok(())
     }
 }
@@ -199,25 +204,25 @@ impl Drop for LinuxSampler {
 
 impl PixelSampler for LinuxSampler {
     fn sample_pixel(&mut self, x: i32, y: i32) -> Result<Color, String> {
-        self.ensure_fresh_screenshot()?;
-        
-        let cache = self.screenshot_cache.as_ref()
-            .ok_or("No screenshot cached")?;
-        
-        if x < 0 || y < 0 || x >= cache.width as i32 || y >= cache.height as i32 {
+        self.ensure_screenshot_captured()?;
+
+        let screenshot = self.screenshot.as_ref()
+            .ok_or("No screenshot available")?;
+
+        if x < 0 || y < 0 || x >= screenshot.width as i32 || y >= screenshot.height as i32 {
             return Ok(Color::new(128, 128, 128));
         }
-        
-        let index = ((y as u32 * cache.width + x as u32) * 3) as usize;
-        
-        if index + 2 >= cache.data.len() {
+
+        let index = ((y as u32 * screenshot.width + x as u32) * 3) as usize;
+
+        if index + 2 >= screenshot.data.len() {
             return Ok(Color::new(128, 128, 128));
         }
-        
-        let r = cache.data[index];
-        let g = cache.data[index + 1];
-        let b = cache.data[index + 2];
-        
+
+        let r = screenshot.data[index];
+        let g = screenshot.data[index + 1];
+        let b = screenshot.data[index + 2];
+
         Ok(Color::new(r, g, b))
     }
 
@@ -254,8 +259,8 @@ impl PixelSampler for LinuxSampler {
     }
 
     fn sample_grid(&mut self, center_x: i32, center_y: i32, grid_size: usize, _scale_factor: f64) -> Result<Vec<Vec<Color>>, String> {
-        // Ensure we have a fresh screenshot
-        self.ensure_fresh_screenshot()?;
+        // Ensure the frozen screenshot has been captured
+        self.ensure_screenshot_captured()?;
         
         let half_size = (grid_size / 2) as i32;
         let mut grid = Vec::with_capacity(grid_size);

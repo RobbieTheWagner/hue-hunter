@@ -165,7 +165,7 @@ export class ColorPicker {
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: false, // Required for ESM preload scripts
-        devTools: true, // Temporarily force true for debugging
+        devTools: isDev, // Only enable devtools while developing hue-hunter
         preload: preloadPath,
       },
     });
