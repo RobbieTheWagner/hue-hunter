@@ -11,8 +11,6 @@ export default tseslint.config(
       'node_modules/',
       'dev-app/dist/',
       'rust-sampler/',
-      'renderer/preload.js',
-      'renderer/*.d.ts',
     ],
   },
   eslint.configs.recommended,

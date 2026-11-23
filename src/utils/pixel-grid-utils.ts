@@ -100,11 +100,3 @@ export function calculatePixelUpdatesWithMismatch(
 
   return updates;
 }
-
-/**
- * Get the center pixel ID for a given grid size.
- */
-export function getCenterPixelId(gridSize: number): string {
-  const centerIndex = Math.floor((gridSize * gridSize) / 2);
-  return `pixel-${centerIndex}`;
-}

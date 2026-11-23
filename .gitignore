@@ -6,7 +6,6 @@ dist/
 
 # Rust
 rust-sampler/target/
-rust-sampler/Cargo.lock
 
 # IDE
 .vscode/
