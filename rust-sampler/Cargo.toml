@@ -15,9 +15,8 @@ path = "src/lib.rs"
 # X11 direct capture (requires system library: libx11-dev on Linux)
 x11 = ["dep:x11"]
 # Wayland screencast (requires system libraries: libpipewire-0.3-dev on Linux).
-# Also pulls in x11 (XWayland cursor tracking) and dirs (restore-token storage),
-# both used by wayland_portal.rs.
-wayland = ["dep:ashpd", "dep:pipewire", "dep:tokio", "dep:x11", "dep:dirs"]
+# Also enables x11, used for XWayland cursor tracking, and dirs for restore-token storage.
+wayland = ["x11", "dep:ashpd", "dep:pipewire", "dep:tokio", "dep:dirs"]
 default = []
 
 [dependencies]
