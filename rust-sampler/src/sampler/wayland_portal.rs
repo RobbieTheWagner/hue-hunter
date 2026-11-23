@@ -207,12 +207,12 @@ impl WaylandPortalSampler {
             mainloop: pw::main_loop::MainLoopRc,
         }
 
-        let callback_data = Arc::new(CallbackData {
+        let callback_data = CallbackData {
             screenshot_buffer: Arc::clone(&self.screenshot_buffer),
             frame_captured: Arc::clone(&frame_captured),
             video_info: Arc::clone(&video_info),
             mainloop: mainloop.clone(),
-        });
+        };
 
         // Add listener to receive one frame
         let _listener = stream
@@ -229,7 +229,7 @@ impl WaylandPortalSampler {
                     
                     if let Ok((_media_type, _media_subtype)) = pw::spa::param::format_utils::parse_format(param) {
                         let mut info = VideoInfoRaw::default();
-                        if let Ok(_) = info.parse(param) {
+                        if info.parse(param).is_ok() {
                             let size = info.size();
                             let width = size.width;
                             let height = size.height;
