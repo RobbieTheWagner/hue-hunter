@@ -16,6 +16,19 @@ interface ErrorResponse {
   error: string;
 }
 
+function isErrorResponse(value: unknown): value is ErrorResponse {
+  return typeof (value as ErrorResponse | null)?.error === 'string';
+}
+
+function isPixelData(value: unknown): value is PixelData {
+  const data = value as PixelData | null;
+  return (
+    typeof data?.center?.hex === 'string' &&
+    typeof data.cursor?.x === 'number' &&
+    Array.isArray(data.grid)
+  );
+}
+
 type SamplerCallback = (data: PixelData) => void;
 type ErrorCallback = (error: string) => void;
 
@@ -126,13 +139,14 @@ export class RustSamplerManager {
 
       for (const line of lines) {
         if (!line.trim() || !owned()) continue;
-        // Also catches `in` throwing on non-object JSON and callback errors.
         try {
-          const parsed = JSON.parse(line) as PixelData | ErrorResponse;
-          if ('error' in parsed) {
+          const parsed: unknown = JSON.parse(line);
+          if (isErrorResponse(parsed)) {
             this.errorCallback?.(parsed.error);
-          } else {
+          } else if (isPixelData(parsed)) {
             this.dataCallback?.(parsed);
+          } else {
+            console.error('[HueHunter] Ignoring unknown sampler output:', line);
           }
         } catch (error) {
           console.error('[HueHunter] Bad sampler output:', line, error);

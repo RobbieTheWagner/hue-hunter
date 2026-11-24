@@ -17,7 +17,7 @@ pnpm build:rust:dev     # Rust binary, debug mode
 pnpm build:ts           # tsc → dist/
 pnpm start              # Run the dev-app test harness (builds debug Rust binary first)
 
-pnpm test               # Vitest (tests/*.test.ts); manager tests spawn tests/fixtures/fake-sampler.mjs
+pnpm test               # Vitest (tests/*.test.ts); manager and picker tests spawn tests/fixtures/fake-sampler.mjs; picker tests fake Electron
 pnpm test:watch
 pnpm vitest run tests/grid-calculation.test.ts   # single test file
 pnpm test:rust          # cargo test in rust-sampler/

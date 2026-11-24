@@ -55,7 +55,15 @@ export class ColorPicker {
   constructor(options: ColorPickerOptions = {}) {
     this.magnifierDiameter = options.initialDiameter ?? 180;
     this.squareSize = adjustSquareSize(options.initialSquareSize ?? 20, 0);
-    this.colorNameFn = options.colorNameFn ?? (() => 'Unknown');
+    const colorNameFn = options.colorNameFn ?? (() => 'Unknown');
+    this.colorNameFn = (rgb) => {
+      try {
+        return colorNameFn(rgb);
+      } catch (error) {
+        console.error('[Hue Hunter] colorNameFn threw:', error);
+        return 'Unknown';
+      }
+    };
     this.samplerManager = new RustSamplerManager();
   }
 

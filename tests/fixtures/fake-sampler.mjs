@@ -48,7 +48,7 @@ const onStart = () => {
     process.exit(1);
   }
   if (mode === 'silent') return;
-  if (mode === 'non-object-lines') write('null\n42\n"text"\n');
+  if (mode === 'non-object-lines') write('null\n42\n"text"\n{}\n{"grid":3}\n');
   timer = setInterval(emit, 10);
 };
 

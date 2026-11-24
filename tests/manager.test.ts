@@ -108,7 +108,7 @@ describe.skipIf(process.platform === 'win32')('RustSamplerManager', () => {
     expect(manager.isRunning()).toBe(false);
   });
 
-  it('skips output lines that are valid JSON but not objects', async () => {
+  it('skips output lines that are valid JSON but not sampler responses', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const sink = collect();
     await useMode('non-object-lines').ensureStarted(
@@ -119,6 +119,7 @@ describe.skipIf(process.platform === 'win32')('RustSamplerManager', () => {
     );
 
     await until(() => sink.data.length >= 3);
+    expect(sink.data.every((d) => Array.isArray(d.grid))).toBe(true);
     expect(sink.errors).toEqual([]);
   });
 
