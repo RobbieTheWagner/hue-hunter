@@ -2,8 +2,8 @@
   "solution": {
     "hue-hunter": {
       "impact": "patch",
-      "oldVersion": "0.4.0",
-      "newVersion": "0.4.1",
+      "oldVersion": "0.4.1",
+      "newVersion": "0.4.2",
       "tagName": "latest",
       "constraints": [
         {
@@ -14,5 +14,5 @@
       "pkgJSONPath": "./package.json"
     }
   },
-  "description": "## Release (2026-01-22)\n\n* hue-hunter 0.4.1 (patch)\n\n#### :bug: Bug Fix\n* `hue-hunter`\n  * [#7](https://github.com/RobbieTheWagner/hue-hunter/pull/7) Fix resources paths ([@RobbieTheWagner](https://github.com/RobbieTheWagner))\n\n#### Committers: 1\n- Robbie Wagner ([@RobbieTheWagner](https://github.com/RobbieTheWagner))\n"
+  "description": "## Release (2026-11-24)\n\n* hue-hunter 0.4.2 (patch)\n\n#### :bug: Bug Fix\n* `hue-hunter`\n  * [#12](https://github.com/RobbieTheWagner/hue-hunter/pull/12) fix(sampler): audit cleanup, lifecycle fixes, and shared Frame decoding ([@RobbieTheWagner](https://github.com/RobbieTheWagner))\n  * [#11](https://github.com/RobbieTheWagner/hue-hunter/pull/11) Bump ashpd to 0.12 to fix build on Rust 1.100 ([@RobbieTheWagner](https://github.com/RobbieTheWagner))\n\n#### Committers: 1\n- Robbie Wagner ([@RobbieTheWagner](https://github.com/RobbieTheWagner))\n"
 }
