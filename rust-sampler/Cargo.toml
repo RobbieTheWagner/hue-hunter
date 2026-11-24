@@ -12,10 +12,11 @@ name = "hue_hunter_sampler"
 path = "src/lib.rs"
 
 [features]
-# X11 support (requires system libraries: libx11-dev on Linux)
-x11 = ["dep:x11", "dep:dirs"]
-# Wayland support (requires system libraries: libpipewire-0.3-dev on Linux)
-wayland = ["dep:ashpd", "dep:pipewire", "dep:tokio", "dep:futures"]
+# X11 direct capture (requires system library: libx11-dev on Linux)
+x11 = ["dep:x11"]
+# Wayland screencast (requires system libraries: libpipewire-0.3-dev on Linux).
+# Also enables x11, used for XWayland cursor tracking, and dirs for restore-token storage.
+wayland = ["x11", "dep:ashpd", "dep:pipewire", "dep:tokio", "dep:dirs"]
 default = []
 
 [dependencies]
@@ -44,7 +45,6 @@ dirs = { version = "5.0", optional = true }
 ashpd = { version = "0.12", optional = true }
 pipewire = { version = "0.9", optional = true }
 tokio = { version = "1", features = ["rt", "sync", "macros"], optional = true }
-futures = { version = "0.3", optional = true }
 
 [profile.release]
 opt-level = 3

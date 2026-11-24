@@ -86,6 +86,8 @@ app.whenReady().then(() => {
 
 ### With Color Naming
 
+hue-hunter does not ship a color-name database. This example uses `color-name-list` and `nearest-color`, which you install yourself.
+
 ```typescript
 import { ColorPicker } from 'hue-hunter';
 import { colornames } from 'color-name-list';

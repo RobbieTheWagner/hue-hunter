@@ -12,6 +12,15 @@ import {
 } from './utils/grid-calculation.js';
 import { adjustSquareSize, getNextDiameter } from './utils/utils.js';
 
+const SAMPLE_RATE_HZ = 15;
+
+const IPC = {
+  colorSelected: 'color-selected',
+  cancelled: 'picker-cancelled',
+  zoomDiameter: 'magnifier-zoom-diameter',
+  zoomDensity: 'magnifier-zoom-density',
+} as const;
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -41,24 +50,44 @@ export class ColorPicker {
   private samplerManager: RustSamplerManager;
   private magnifierDiameter: number;
   private squareSize: number;
-  private gridSize: number; // Display grid size (what renderer shows)
-  private samplerGridSize: number; // Buffered grid size (what Rust samples)
   private colorNameFn: (rgb: { r: number; g: number; b: number }) => string;
 
   constructor(options: ColorPickerOptions = {}) {
     this.magnifierDiameter = options.initialDiameter ?? 180;
-    this.squareSize = options.initialSquareSize ?? 20;
-    this.gridSize = calculateGridSize(this.magnifierDiameter, this.squareSize);
-    this.samplerGridSize = calculateBufferedGridSize(
-      this.magnifierDiameter,
-      this.squareSize
-    );
-    this.colorNameFn = options.colorNameFn ?? (() => 'Unknown');
+    this.squareSize = adjustSquareSize(options.initialSquareSize ?? 20, 0);
+    const colorNameFn = options.colorNameFn ?? (() => 'Unknown');
+    this.colorNameFn = (rgb) => {
+      try {
+        return colorNameFn(rgb);
+      } catch (error) {
+        console.error('[Hue Hunter] colorNameFn threw:', error);
+        return 'Unknown';
+      }
+    };
     this.samplerManager = new RustSamplerManager();
   }
 
-  private getColorName(r: number, g: number, b: number): string {
-    return this.colorNameFn({ r, g, b });
+  /** What the renderer shows. */
+  private get gridSize(): number {
+    return calculateGridSize(this.magnifierDiameter, this.squareSize);
+  }
+
+  /**
+   * What the sampler captures: a margin around the displayed grid, so a zoom
+   * usually has pixels to show before the sampler applies the new size. Fast
+   * repeated zooms can outrun it, leaving edge cells unpainted for a frame.
+   */
+  private get samplerGridSize(): number {
+    return calculateBufferedGridSize(this.magnifierDiameter, this.squareSize);
+  }
+
+  private resize(diameter: number, squareSize: number): void {
+    if (diameter === this.magnifierDiameter && squareSize === this.squareSize) {
+      return;
+    }
+    this.magnifierDiameter = diameter;
+    this.squareSize = squareSize;
+    this.samplerManager.updateGridSize(this.samplerGridSize);
   }
 
   private getPreloadPath(): string {
@@ -118,22 +147,37 @@ export class ColorPicker {
 
   /**
    * Launch the magnifying color picker and wait for user selection.
-   * @returns The selected color as a hex string (e.g., "#FF8040"), or null if cancelled
+   * @returns The selected color as a hex string (e.g., "#FF8040"), or null if
+   * cancelled or the sampler failed
    */
   async pickColor(): Promise<string | null> {
     if (this.isActive) {
       return null;
     }
-
     this.isActive = true;
 
+    let currentColor: string | null = null;
+    let finish: (color: string | null) => void = () => {};
+    const picked = new Promise<string | null>((resolve) => (finish = resolve));
+
     try {
-      // Pre-start the sampler to trigger permission dialogs BEFORE showing magnifier
-      // This is critical on Wayland where the permission dialog needs to be clickable
-      // Use buffered grid size for sampling to ensure smooth zoom transitions
-      await this.samplerManager.ensureStarted(this.samplerGridSize, 15);
-      await this.createMagnifierWindow();
-      return await this.startColorPicking();
+      // Start sampling before the window exists so permission dialogs
+      // (macOS Screen Recording, the Wayland portal) stay clickable.
+      await this.samplerManager.ensureStarted(
+        this.samplerGridSize,
+        SAMPLE_RATE_HZ,
+        (pixelData) => {
+          currentColor = pixelData.center.hex;
+          this.render(pixelData);
+        },
+        (error) => {
+          console.error('[Hue Hunter] Sampler error:', error);
+          if (!this.samplerManager.isRunning()) finish(null);
+        }
+      );
+      await this.createMagnifierWindow(() => finish(null));
+      this.listenForInput((selected) => finish(selected ? currentColor : null));
+      return await picked;
     } catch (error) {
       console.error('[Hue Hunter] Error:', error);
       return null;
@@ -142,7 +186,7 @@ export class ColorPicker {
     }
   }
 
-  private async createMagnifierWindow(): Promise<void> {
+  private async createMagnifierWindow(onClosed: () => void): Promise<void> {
     const cursorPos = screen.getCursorScreenPoint();
     const display = screen.getDisplayNearestPoint(cursorPos);
 
@@ -165,7 +209,7 @@ export class ColorPicker {
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: false, // Required for ESM preload scripts
-        devTools: true, // Temporarily force true for debugging
+        devTools: isDev, // Only enable devtools while developing hue-hunter
         preload: preloadPath,
       },
     });
@@ -189,172 +233,63 @@ export class ColorPicker {
       await this.magnifierWindow.loadURL(url);
     }
 
+    this.magnifierWindow.once('closed', onClosed);
     this.magnifierWindow.show();
   }
 
-  private startColorPicking(): Promise<string | null> {
-    return new Promise((resolve) => {
-      let currentColor = '#FFFFFF';
-      let hasResolved = false;
+  private listenForInput(done: (selected: boolean) => void): void {
+    ipcMain.once(IPC.colorSelected, () => done(true));
+    ipcMain.once(IPC.cancelled, () => done(false));
+    globalShortcut.register('Escape', () => done(false));
 
-      const cleanup = () => {
-        // Unregister global shortcut
-        globalShortcut.unregister('Escape');
-
-        // Remove IPC listeners
-        ipcMain.removeAllListeners('color-selected');
-        ipcMain.removeAllListeners('picker-cancelled');
-        ipcMain.removeAllListeners('magnifier-zoom-diameter');
-        ipcMain.removeAllListeners('magnifier-zoom-density');
-
-        // Remove window close handler
-        if (this.magnifierWindow && !this.magnifierWindow.isDestroyed()) {
-          this.magnifierWindow.removeAllListeners('closed');
-        }
-      };
-
-      const resolveOnce = (result: string | null) => {
-        if (!hasResolved) {
-          hasResolved = true;
-          cleanup();
-          resolve(result);
-        }
-      };
-
-      // Handle window close (Alt+F4, close button, etc.)
-      if (this.magnifierWindow && !this.magnifierWindow.isDestroyed()) {
-        this.magnifierWindow.once('closed', () => {
-          resolveOnce(null);
-        });
-      }
-
-      ipcMain.once('color-selected', () => resolveOnce(currentColor));
-      ipcMain.once('picker-cancelled', () => resolveOnce(null));
-
-      ipcMain.on('magnifier-zoom-diameter', (_event, delta: number) => {
-        const newDiameter = getNextDiameter(this.magnifierDiameter, delta);
-
-        if (newDiameter !== this.magnifierDiameter) {
-          this.magnifierDiameter = newDiameter;
-          this.gridSize = calculateGridSize(
-            this.magnifierDiameter,
-            this.squareSize
-          );
-          this.samplerGridSize = calculateBufferedGridSize(
-            this.magnifierDiameter,
-            this.squareSize
-          );
-
-          // Update grid size in Rust sampler (use buffered size)
-          this.samplerManager.updateGridSize(this.samplerGridSize);
-        }
-      });
-
-      ipcMain.on('magnifier-zoom-density', (_event, delta: number) => {
-        const newSquareSize = adjustSquareSize(this.squareSize, delta);
-
-        if (newSquareSize !== this.squareSize) {
-          this.squareSize = newSquareSize;
-          this.gridSize = calculateGridSize(
-            this.magnifierDiameter,
-            this.squareSize
-          );
-          this.samplerGridSize = calculateBufferedGridSize(
-            this.magnifierDiameter,
-            this.squareSize
-          );
-
-          // Update grid size in Rust sampler (use buffered size)
-          this.samplerManager.updateGridSize(this.samplerGridSize);
-        }
-      });
-
-      globalShortcut.register('Escape', () => resolveOnce(null));
-
-      // Set up data callback for the sampler
-      const dataCallback = (pixelData: PixelData) => {
-        // Update current color
-        currentColor = pixelData.center.hex;
-
-        // Get color name
-        const colorName = this.getColorName(
-          pixelData.center.r,
-          pixelData.center.g,
-          pixelData.center.b
-        );
-
-        // Update magnifier position
-        this.updateMagnifierPosition(pixelData.cursor);
-
-        // Send pixel grid to renderer
-        if (this.magnifierWindow && !this.magnifierWindow.isDestroyed()) {
-          this.magnifierWindow.webContents.send('update-pixel-grid', {
-            centerColor: pixelData.center,
-            colorName,
-            pixels: pixelData.grid,
-            diameter: this.magnifierDiameter,
-            gridSize: this.gridSize,
-            squareSize: this.squareSize,
-          });
-        }
-      };
-
-      const errorCallback = (error: string) => {
-        console.error('[Hue Hunter] Sampler error:', error);
-        // Continue even on errors - they might be transient
-      };
-
-      // Start the Rust sampler if not already running
-      // (it may already be running from ensureStarted)
-      if (!this.samplerManager.isRunning()) {
-        this.samplerManager
-          .start(
-            this.samplerGridSize, // Use buffered grid size
-            15, // 15 Hz sample rate (realistic for screen capture)
-            dataCallback,
-            errorCallback
-          )
-          .catch((error: unknown) => {
-            console.error('[Hue Hunter] Failed to start sampler:', error);
-          });
-      } else {
-        // Replace callbacks since ensureStarted used temporary ones
-        this.samplerManager.dataCallback = dataCallback;
-        this.samplerManager.errorCallback = errorCallback;
-      }
+    ipcMain.on(IPC.zoomDiameter, (_event, delta: number) => {
+      this.resize(
+        getNextDiameter(this.magnifierDiameter, delta),
+        this.squareSize
+      );
+    });
+    ipcMain.on(IPC.zoomDensity, (_event, delta: number) => {
+      this.resize(
+        this.magnifierDiameter,
+        adjustSquareSize(this.squareSize, delta)
+      );
     });
   }
 
-  private updateMagnifierPosition(cursor: { x: number; y: number }): void {
-    if (!this.magnifierWindow || this.magnifierWindow.isDestroyed()) return;
+  private render(pixelData: PixelData): void {
+    const window = this.magnifierWindow;
+    if (!window || window.isDestroyed()) return;
 
-    const windowBounds = this.magnifierWindow.getBounds();
-
-    this.magnifierWindow.webContents.send('update-magnifier-position', {
-      x: cursor.x,
-      y: cursor.y,
-      displayX: windowBounds.x,
-      displayY: windowBounds.y,
+    const bounds = window.getBounds();
+    window.webContents.send('update-magnifier-position', {
+      x: pixelData.cursor.x,
+      y: pixelData.cursor.y,
+      displayX: bounds.x,
+      displayY: bounds.y,
+    });
+    window.webContents.send('update-pixel-grid', {
+      centerColor: pixelData.center,
+      colorName: this.colorNameFn(pixelData.center),
+      pixels: pixelData.grid,
+      diameter: this.magnifierDiameter,
+      gridSize: this.gridSize,
+      squareSize: this.squareSize,
     });
   }
 
   private cleanup(): void {
     this.isActive = false;
-
-    // Stop the Rust sampler
     void this.samplerManager.stop();
 
     if (this.magnifierWindow && !this.magnifierWindow.isDestroyed()) {
+      this.magnifierWindow.removeAllListeners('closed');
       this.magnifierWindow.close();
-      this.magnifierWindow = null;
     }
+    this.magnifierWindow = null;
 
-    ipcMain.removeAllListeners('magnifier-ready');
-    ipcMain.removeAllListeners('color-selected');
-    ipcMain.removeAllListeners('picker-cancelled');
-    ipcMain.removeAllListeners('magnifier-zoom-diameter');
-    ipcMain.removeAllListeners('magnifier-zoom-density');
-
+    for (const channel of Object.values(IPC)) {
+      ipcMain.removeAllListeners(channel);
+    }
     globalShortcut.unregister('Escape');
   }
 }

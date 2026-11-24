@@ -1,121 +1,64 @@
-// Wayland screen capture using XDG Desktop Portal Screencast + PipeWire
+// Wayland capture through the XDG Desktop Portal ScreenCast API and PipeWire.
 //
-// This implementation:
-// 1. Uses ashpd to request screencast via Portal
-// 2. Stores restore tokens to avoid repeated permission prompts  
-// 3. Takes a screenshot on each sample request (not live streaming)
-// 4. Samples pixels from the screenshot buffer
+// Grabs one frame when the sampler starts, before the magnifier window is shown, and
+// samples every grid from it. Wayland gives us no way to exclude our own window from
+// a screencast, so a live stream would capture the magnifier.
 //
-// NOTE: This approach does not provide live updates like the macOS/Windows samplers.
-// The screen is captured once per sample/grid request. This is a limitation of 
-// Wayland's security model - we cannot exclude windows (like the magnifier) from
-// PipeWire video streams, so we use screenshots instead to avoid capturing the
-// magnifier window overlay.
+// The cursor position comes from XWayland, which needs an X display.
 
+use super::linux::XDisplay;
+use crate::frame::{Frame, PixelFormat};
 use crate::types::{Color, PixelSampler, Point};
 use ashpd::desktop::screencast::{CursorMode, Screencast, SourceType};
 use ashpd::desktop::PersistMode;
 use pipewire as pw;
-use std::sync::{Arc, Mutex};
+use pw::spa::param::video::{VideoFormat, VideoInfoRaw};
+use std::cell::RefCell;
+use std::os::fd::OwnedFd;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::time::Duration;
 
+const FRAME_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Treats XWayland cursor coordinates as frame pixel coordinates, which holds for a
+/// single monitor without scaling. Multi-monitor offsets and HiDPI scaling are not
+/// handled because XWayland's coordinate space differs between compositors.
 pub struct WaylandPortalSampler {
-    runtime: tokio::runtime::Runtime,
-    x11_display: *mut x11::xlib::Display,
-    screenshot_buffer: Arc<Mutex<Option<ScreenshotBuffer>>>,
-    pipewire_node_id: Option<u32>,
-    restore_token: Option<String>,
-    screenshot_captured: bool, // Track if we've already captured the initial screenshot
+    display: XDisplay,
+    frame: Frame,
 }
 
-struct ScreenshotBuffer {
-    data: Vec<u8>,
-    width: u32,
-    height: u32,
-    stride: usize,
+struct Stream {
+    fd: OwnedFd,
+    node_id: u32,
 }
 
 impl WaylandPortalSampler {
+    /// Asks the portal for screen access (a dialog unless a saved token is still
+    /// valid) and captures one frame.
     pub fn new() -> Result<Self, String> {
-        // Still need X11 for cursor position
-        let x11_display = unsafe {
-            let display = x11::xlib::XOpenDisplay(std::ptr::null());
-            if display.is_null() {
-                return Err("Failed to open X11 display for cursor tracking".to_string());
-            }
-            display
-        };
-        
-        // Create tokio runtime for async operations
+        let display = XDisplay::open()
+            .map_err(|e| format!("{} (needed for cursor tracking via XWayland)", e))?;
+
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .map_err(|e| format!("Failed to create async runtime: {}", e))?;
-        
-        // Load any existing restore token
-        let restore_token = Self::load_restore_token();
-        
-        Ok(WaylandPortalSampler {
-            runtime,
-            x11_display,
-            screenshot_buffer: Arc::new(Mutex::new(None)),
-            pipewire_node_id: None,
-            restore_token,
-            screenshot_captured: false,
-        })
-    }
-    
-    fn load_restore_token() -> Option<String> {
-        let token_path = dirs::data_local_dir()?.join("hue-hunter").join("screencast-token");
-        std::fs::read_to_string(token_path).ok()
-    }
-    
-    fn save_restore_token(token: &str) -> Result<(), String> {
-        let data_dir = dirs::data_local_dir()
-            .ok_or("Could not find data directory")?
-            .join("hue-hunter");
-        
-        std::fs::create_dir_all(&data_dir)
-            .map_err(|e| format!("Failed to create data directory: {}", e))?;
-        
-        let token_path = data_dir.join("screencast-token");
-        std::fs::write(token_path, token)
-            .map_err(|e| format!("Failed to save restore token: {}", e))?;
-        
-        eprintln!("✓ Screen capture permission saved for future use");
-        Ok(())
-    }
-    
-    pub fn request_permission(&mut self) -> Result<(), String> {
-        self.ensure_screencast_permission()
-    }
-    
-    fn ensure_screencast_permission(&mut self) -> Result<(), String> {
-        // If we already have a node ID, permission is granted
-        if self.pipewire_node_id.is_some() {
-            return Ok(());
-        }
-        
-        let restore_token = self.restore_token.clone();
-        
-        if restore_token.is_none() {
-            eprintln!("Requesting screen capture permission...");
-        }
-        
-        // Get the PipeWire node ID from the portal
-        let (node_id, new_token) = self.runtime.block_on(async {
-            // Connect to screencast portal
-            let screencast = Screencast::new().await
+
+        let frame = runtime.block_on(async {
+            let screencast = Screencast::new()
+                .await
                 .map_err(|e| format!("Failed to connect to screencast portal: {}", e))?;
-            
-            // Create screencast session
-            let session = screencast.create_session().await
+            let session = screencast
+                .create_session()
+                .await
                 .map_err(|e| format!("Failed to create screencast session: {}", e))?;
-            
-            // Select sources
+            let restore_token = load_restore_token();
             screencast
                 .select_sources(
                     &session,
-                    CursorMode::Hidden, // Don't include cursor in screenshots
+                    CursorMode::Hidden,
                     SourceType::Monitor.into(),
                     false,
                     restore_token.as_deref(),
@@ -123,313 +66,274 @@ impl WaylandPortalSampler {
                 )
                 .await
                 .map_err(|e| format!("Failed to select screencast sources: {}", e))?;
-            
-            // Start the screencast
-            let start_request = screencast
+            let response = screencast
                 .start(&session, None)
                 .await
-                .map_err(|e| format!("Failed to start screencast: {}", e))?;
-            
-            // Get the response
-            let streams_response = start_request.response()
-                .map_err(|e| format!("Failed to get screencast response: {}", e))?;
-            
-            eprintln!("✓ Screen capture permission granted");
-            
-            // Get PipeWire node ID and restore token
-            let streams = streams_response.streams();
-            if streams.is_empty() {
-                return Err("No PipeWire streams available".to_string());
+                .map_err(|e| format!("Failed to start screencast: {}", e))?
+                .response()
+                .map_err(|e| format!("Screen capture permission denied: {}", e))?;
+
+            if let Some(token) = response.restore_token() {
+                if let Err(e) = save_restore_token(token) {
+                    eprintln!("Warning: could not save screencast permission: {}", e);
+                }
             }
-            
-            let node_id = streams[0].pipe_wire_node_id();
-            let new_token = streams_response.restore_token().map(|s| s.to_string());
-            
-            Ok::<(u32, Option<String>), String>((node_id, new_token))
+
+            let info = response
+                .streams()
+                .first()
+                .ok_or("Portal returned no PipeWire streams")?;
+            let fd = screencast
+                .open_pipe_wire_remote(&session)
+                .await
+                .map_err(|e| format!("Failed to open PipeWire remote: {}", e))?;
+            let frame = capture_frame(Stream {
+                fd,
+                node_id: info.pipe_wire_node_id(),
+            });
+            let _ = session.close().await;
+            frame
         })?;
-        
-        // Save restore token if we got a new one
-        if let Some(token) = new_token {
-            self.restore_token = Some(token.clone());
-            if let Err(e) = Self::save_restore_token(&token) {
-                eprintln!("Warning: Could not save permission token: {}", e);
-            }
-        }
-        
-        self.pipewire_node_id = Some(node_id);
-        eprintln!("✓ Screen capture initialized");
-        
-        Ok(())
-    }
-    
-    // Capture a screenshot from the PipeWire stream
-    fn capture_screenshot(&mut self) -> Result<(), String> {
-        let node_id = self.pipewire_node_id
-            .ok_or("Screen capture not initialized - call request_permission first")?;
-        
-        // Initialize PipeWire
-        pw::init();
 
-        // Create PipeWire main loop
-        let mainloop = pw::main_loop::MainLoopRc::new(None)
-            .map_err(|_| "Failed to create PipeWire main loop".to_string())?;
+        eprintln!(
+            "Captured Wayland frame: {}x{}",
+            frame.width(),
+            frame.height()
+        );
 
-        // Create PipeWire context
-        let context = pw::context::ContextRc::new(&mainloop, None)
-            .map_err(|_| "Failed to create PipeWire context".to_string())?;
-
-        // Connect to PipeWire core
-        let core = context.connect_rc(None)
-            .map_err(|_| "Failed to connect to PipeWire".to_string())?;
-        
-        // Create a stream
-        let stream = pw::stream::StreamBox::new(
-            &core,
-            "hue-hunter-screenshot",
-            pw::properties::properties! {
-                *pw::keys::MEDIA_TYPE => "Video",
-                *pw::keys::MEDIA_CATEGORY => "Capture",
-                *pw::keys::MEDIA_ROLE => "Screen",
-            },
-        ).map_err(|_| "Failed to create PipeWire stream".to_string())?;
-        
-        // Video format info
-        let video_info: Arc<Mutex<Option<(u32, u32, usize)>>> = Arc::new(Mutex::new(None));
-
-        // Frame captured flag
-        let frame_captured = Arc::new(std::sync::atomic::AtomicBool::new(false));
-
-        // User data for callbacks
-        struct CallbackData {
-            screenshot_buffer: Arc<Mutex<Option<ScreenshotBuffer>>>,
-            frame_captured: Arc<std::sync::atomic::AtomicBool>,
-            video_info: Arc<Mutex<Option<(u32, u32, usize)>>>,
-            mainloop: pw::main_loop::MainLoopRc,
-        }
-
-        let callback_data = CallbackData {
-            screenshot_buffer: Arc::clone(&self.screenshot_buffer),
-            frame_captured: Arc::clone(&frame_captured),
-            video_info: Arc::clone(&video_info),
-            mainloop: mainloop.clone(),
-        };
-
-        // Add listener to receive one frame
-        let _listener = stream
-            .add_local_listener_with_user_data(callback_data)
-            .param_changed(move |_stream, user_data, id, param| {
-                use pw::spa::param::ParamType;
-                
-                if id != ParamType::Format.as_raw() {
-                    return;
-                }
-                
-                if let Some(param) = param {
-                    use pw::spa::param::video::VideoInfoRaw;
-                    
-                    if let Ok((_media_type, _media_subtype)) = pw::spa::param::format_utils::parse_format(param) {
-                        let mut info = VideoInfoRaw::default();
-                        if info.parse(param).is_ok() {
-                            let size = info.size();
-                            let width = size.width;
-                            let height = size.height;
-                            let stride = width as usize * 4; // BGRA format
-                            
-                            if let Ok(mut vi) = user_data.video_info.lock() {
-                                *vi = Some((width, height, stride));
-                            }
-                        }
-                    }
-                }
-            })
-            .process(move |stream, user_data| {
-                // Only capture one frame
-                if user_data.frame_captured.load(std::sync::atomic::Ordering::SeqCst) {
-                    return;
-                }
-
-                match stream.dequeue_buffer() {
-                    None => {}
-                    Some(mut buffer) => {
-                        let datas = buffer.datas_mut();
-                        if datas.is_empty() {
-                            return;
-                        }
-
-                        let data = &mut datas[0];
-                        let chunk = data.chunk();
-                        let size = chunk.size() as usize;
-
-                        if size == 0 {
-                            return;
-                        }
-
-                        // Get video format
-                        let format_info = if let Ok(vi) = user_data.video_info.lock() {
-                            *vi
-                        } else {
-                            None
-                        };
-
-                        // Get frame data
-                        if let Some(slice) = data.data() {
-                            if slice.len() >= size {
-                                let pixel_data = slice[..size].to_vec();
-
-                                if let Some((width, height, stride)) = format_info {
-                                    if width > 0 && height > 0 {
-                                        eprintln!("[Wayland] Captured screenshot: {}x{} ({} bytes)", width, height, pixel_data.len());
-                                        if let Ok(mut buf) = user_data.screenshot_buffer.lock() {
-                                            *buf = Some(ScreenshotBuffer {
-                                                data: pixel_data,
-                                                width,
-                                                height,
-                                                stride,
-                                            });
-                                            user_data.frame_captured.store(true, std::sync::atomic::Ordering::SeqCst);
-                                            user_data.mainloop.quit();
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            })
-            .register()
-            .map_err(|e| format!("Failed to register stream listener: {:?}", e))?;
-        
-        // Connect stream to the PipeWire node
-        stream.connect(
-            pw::spa::utils::Direction::Input,
-            Some(node_id),
-            pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS,
-            &mut [],
-        )
-        .map_err(|e| format!("Failed to connect stream: {:?}", e))?;
-        
-        // Run mainloop until we capture one frame or timeout
-        mainloop.run();
-        
-        Ok(())
-    }
-    
-    fn ensure_screenshot_captured(&mut self) -> Result<(), String> {
-        self.ensure_screencast_permission()?;
-        
-        if !self.screenshot_captured {
-            self.capture_screenshot()?;
-            self.screenshot_captured = true;
-        }
-        
-        Ok(())
-    }
-}
-
-impl Drop for WaylandPortalSampler {
-    fn drop(&mut self) {
-        unsafe {
-            x11::xlib::XCloseDisplay(self.x11_display);
-        }
+        Ok(WaylandPortalSampler { display, frame })
     }
 }
 
 impl PixelSampler for WaylandPortalSampler {
-    fn sample_pixel(&mut self, x: i32, y: i32) -> Result<Color, String> {
-        self.ensure_screenshot_captured()?;
-        
-        let buffer = self.screenshot_buffer.lock().unwrap();
-        let screenshot = buffer.as_ref()
-            .ok_or("No screenshot available")?;
-        
-        if x < 0 || y < 0 || x >= screenshot.width as i32 || y >= screenshot.height as i32 {
-            return Ok(Color::new(128, 128, 128));
-        }
-        
-        let offset = (y as usize * screenshot.stride) + (x as usize * 4);
-        
-        if offset + 3 >= screenshot.data.len() {
-            return Ok(Color::new(128, 128, 128));
-        }
-        
-        // Assuming BGRA format
-        let b = screenshot.data[offset];
-        let g = screenshot.data[offset + 1];
-        let r = screenshot.data[offset + 2];
-        
-        Ok(Color::new(r, g, b))
-    }
-    
     fn get_cursor_position(&self) -> Result<Point, String> {
-        unsafe {
-            let root = x11::xlib::XDefaultRootWindow(self.x11_display);
-            
-            let mut root_return = 0;
-            let mut child_return = 0;
-            let mut root_x = 0;
-            let mut root_y = 0;
-            let mut win_x = 0;
-            let mut win_y = 0;
-            let mut mask_return = 0;
-            
-            let result = x11::xlib::XQueryPointer(
-                self.x11_display,
-                root,
-                &mut root_return,
-                &mut child_return,
-                &mut root_x,
-                &mut root_y,
-                &mut win_x,
-                &mut win_y,
-                &mut mask_return,
-            );
-            
-            if result == 0 {
-                return Err("Failed to query pointer".to_string());
-            }
-            
-            Ok(Point { x: root_x, y: root_y })
-        }
+        self.display.cursor_position()
     }
 
-    fn sample_grid(&mut self, center_x: i32, center_y: i32, grid_size: usize, _scale_factor: f64) -> Result<Vec<Vec<Color>>, String> {
-        self.ensure_screenshot_captured()?;
-        
-        let buffer = self.screenshot_buffer.lock().unwrap();
-        let screenshot = buffer.as_ref()
-            .ok_or("No screenshot available")?;
-        
-        let half_size = (grid_size / 2) as i32;
-        let mut grid = Vec::with_capacity(grid_size);
-        
-        for row in 0..grid_size {
-            let mut row_pixels = Vec::with_capacity(grid_size);
-            for col in 0..grid_size {
-                let x = center_x + (col as i32 - half_size);
-                let y = center_y + (row as i32 - half_size);
-                
-                // Sample from the screenshot buffer
-                let color = if x < 0 || y < 0 || x >= screenshot.width as i32 || y >= screenshot.height as i32 {
-                    Color::new(128, 128, 128)
-                } else {
-                    let offset = (y as usize * screenshot.stride) + (x as usize * 4);
-                    
-                    if offset + 3 >= screenshot.data.len() {
-                        Color::new(128, 128, 128)
-                    } else {
-                        // Assuming BGRA format
-                        let b = screenshot.data[offset];
-                        let g = screenshot.data[offset + 1];
-                        let r = screenshot.data[offset + 2];
-                        Color::new(r, g, b)
-                    }
-                };
-                
-                row_pixels.push(color);
-            }
-            grid.push(row_pixels);
-        }
-        
-        Ok(grid)
+    fn sample_grid(
+        &mut self,
+        center_x: i32,
+        center_y: i32,
+        grid_size: usize,
+    ) -> Result<Vec<Vec<Color>>, String> {
+        Ok(self.frame.grid(center_x, center_y, grid_size, 1))
     }
+}
+
+fn pixel_format(format: VideoFormat) -> Option<PixelFormat> {
+    match format {
+        VideoFormat::BGRx | VideoFormat::BGRA => Some(PixelFormat::Bgrx),
+        VideoFormat::RGBx | VideoFormat::RGBA => Some(PixelFormat::Rgbx),
+        VideoFormat::xRGB | VideoFormat::ARGB => Some(PixelFormat::Xrgb),
+        VideoFormat::xBGR | VideoFormat::ABGR => Some(PixelFormat::Xbgr),
+        _ => None,
+    }
+}
+
+/// An EnumFormat param offering raw video in every byte order `pixel_format` reads.
+fn format_params() -> Result<Vec<u8>, String> {
+    use pw::spa::param::format::{FormatProperties, MediaSubtype, MediaType};
+    use pw::spa::pod::{self, serialize::PodSerializer, Value};
+    use pw::spa::utils::{Fraction, Rectangle, SpaTypes};
+
+    let object = pod::object!(
+        SpaTypes::ObjectParamFormat,
+        pw::spa::param::ParamType::EnumFormat,
+        pod::property!(FormatProperties::MediaType, Id, MediaType::Video),
+        pod::property!(FormatProperties::MediaSubtype, Id, MediaSubtype::Raw),
+        pod::property!(
+            FormatProperties::VideoFormat,
+            Choice,
+            Enum,
+            Id,
+            VideoFormat::BGRx,
+            VideoFormat::BGRx,
+            VideoFormat::BGRA,
+            VideoFormat::RGBx,
+            VideoFormat::RGBA,
+            VideoFormat::xRGB,
+            VideoFormat::ARGB,
+            VideoFormat::xBGR,
+            VideoFormat::ABGR,
+        ),
+        pod::property!(
+            FormatProperties::VideoSize,
+            Choice,
+            Range,
+            Rectangle,
+            Rectangle {
+                width: 1920,
+                height: 1080
+            },
+            Rectangle {
+                width: 1,
+                height: 1
+            },
+            Rectangle {
+                width: 16384,
+                height: 16384
+            }
+        ),
+        pod::property!(
+            FormatProperties::VideoFramerate,
+            Choice,
+            Range,
+            Fraction,
+            Fraction { num: 30, denom: 1 },
+            Fraction { num: 0, denom: 1 },
+            Fraction {
+                num: 1000,
+                denom: 1
+            }
+        ),
+    );
+    PodSerializer::serialize(std::io::Cursor::new(Vec::new()), &Value::Object(object))
+        .map(|(cursor, _)| cursor.into_inner())
+        .map_err(|e| format!("Failed to build PipeWire format parameters: {:?}", e))
+}
+
+/// Connects to the portal's PipeWire remote and returns the first frame it sends.
+fn capture_frame(stream_info: Stream) -> Result<Frame, String> {
+    pw::init();
+    let mainloop = pw::main_loop::MainLoopRc::new(None)
+        .map_err(|e| format!("Failed to create PipeWire main loop: {}", e))?;
+    let context = pw::context::ContextRc::new(&mainloop, None)
+        .map_err(|e| format!("Failed to create PipeWire context: {}", e))?;
+    let core = context
+        .connect_fd_rc(stream_info.fd, None)
+        .map_err(|e| format!("Failed to connect to PipeWire: {}", e))?;
+    let stream = pw::stream::StreamBox::new(
+        &core,
+        "hue-hunter-screenshot",
+        pw::properties::properties! {
+            *pw::keys::MEDIA_TYPE => "Video",
+            *pw::keys::MEDIA_CATEGORY => "Capture",
+            *pw::keys::MEDIA_ROLE => "Screen",
+        },
+    )
+    .map_err(|e| format!("Failed to create PipeWire stream: {}", e))?;
+
+    let format: Rc<RefCell<Option<VideoInfoRaw>>> = Rc::new(RefCell::new(None));
+    let result: Rc<RefCell<Option<Result<Frame, String>>>> = Rc::new(RefCell::new(None));
+
+    let _listener = stream
+        .add_local_listener_with_user_data(())
+        .param_changed({
+            let format = format.clone();
+            move |_, _, id, param| {
+                let Some(param) = param else { return };
+                if id != pw::spa::param::ParamType::Format.as_raw() {
+                    return;
+                }
+                let mut info = VideoInfoRaw::default();
+                if info.parse(param).is_ok() {
+                    *format.borrow_mut() = Some(info);
+                }
+            }
+        })
+        .process({
+            let format = format.clone();
+            let result = result.clone();
+            let mainloop = mainloop.clone();
+            move |stream, _| {
+                if result.borrow().is_some() {
+                    return;
+                }
+                let Some(info) = *format.borrow() else { return };
+                let Some(mut buffer) = stream.dequeue_buffer() else {
+                    return;
+                };
+                let Some(data) = buffer.datas_mut().first_mut() else {
+                    return;
+                };
+                let chunk = data.chunk();
+                let (offset, size) = (chunk.offset() as usize, chunk.size() as usize);
+                let width = info.size().width;
+                let stride = match chunk.stride() {
+                    s if s > 0 => s as usize,
+                    _ => width as usize * 4,
+                };
+                if size == 0 {
+                    return;
+                }
+                let Some(mapped) = data.data().filter(|d| !d.is_empty()) else {
+                    *result.borrow_mut() = Some(Err(
+                        "PipeWire buffer is not memory-mapped (DMA-BUF only?)".into(),
+                    ));
+                    mainloop.quit();
+                    return;
+                };
+                // SPA defines the chunk offset modulo the mapped size.
+                let offset = offset % mapped.len();
+                let bytes = &mapped[offset..(offset + size).min(mapped.len())];
+                let frame = match pixel_format(info.format()) {
+                    Some(pixel_format) => Frame::new(
+                        bytes.to_vec(),
+                        width,
+                        info.size().height,
+                        stride,
+                        pixel_format,
+                    ),
+                    None => Err(format!(
+                        "Unsupported PipeWire video format {:?}",
+                        info.format()
+                    )),
+                };
+                *result.borrow_mut() = Some(frame);
+                mainloop.quit();
+            }
+        })
+        .register()
+        .map_err(|e| format!("Failed to register stream listener: {}", e))?;
+
+    let formats = format_params()?;
+    let mut params = [pw::spa::pod::Pod::from_bytes(&formats)
+        .ok_or("Failed to build PipeWire format parameters")?];
+    stream
+        .connect(
+            pw::spa::utils::Direction::Input,
+            Some(stream_info.node_id),
+            pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS,
+            &mut params,
+        )
+        .map_err(|e| format!("Failed to connect PipeWire stream: {}", e))?;
+
+    let timeout = mainloop.loop_().add_timer({
+        let mainloop = mainloop.clone();
+        move |_| mainloop.quit()
+    });
+    timeout
+        .update_timer(Some(FRAME_TIMEOUT), None)
+        .into_result()
+        .map_err(|e| format!("Failed to arm PipeWire timeout: {}", e))?;
+
+    mainloop.run();
+
+    let frame = result.borrow_mut().take();
+    frame.unwrap_or_else(|| {
+        Err(format!(
+            "No frame from PipeWire within {}s",
+            FRAME_TIMEOUT.as_secs()
+        ))
+    })
+}
+
+fn token_path() -> Option<PathBuf> {
+    Some(
+        dirs::data_local_dir()?
+            .join("hue-hunter")
+            .join("screencast-token"),
+    )
+}
+
+fn load_restore_token() -> Option<String> {
+    std::fs::read_to_string(token_path()?).ok()
+}
+
+fn save_restore_token(token: &str) -> Result<(), String> {
+    let path = token_path().ok_or("Could not find data directory")?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(path, token).map_err(|e| e.to_string())
 }

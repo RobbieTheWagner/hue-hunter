@@ -8,37 +8,28 @@ This Rust binary provides continuous, real-time pixel sampling for the Hue Hunte
 
 ## Platform Support
 
-### macOS ✅
+### macOS
 
-- Uses Core Graphics `CGDisplayCreateImage` for efficient screen capture
-- Direct pixel access without full screenshots
-- Hardware-accelerated sampling
-- Native cursor position tracking via NSEvent
+- Captures only the grid region with `CGWindowListCreateImage` once per frame. The magnifier window sets content protection, so it is excluded from the capture.
+- Reads the cursor with `CGEventGetLocation`.
 
-### Linux (X11) ✅
+### Windows
 
-- Uses native X11 `XGetImage` and `XGetPixel` APIs
-- Direct pixel sampling without external tools
-- Native cursor position tracking via `XQueryPointer`
-- No external dependencies required
-- Best performance
+- Copies the grid region with `BitBlt` once per frame and falls back to `GetPixel` if that fails.
+- Reads the cursor with `GetCursorPos` and converts between logical and physical pixels using the DPI scale.
 
-### Linux (Wayland) ✅ **FULLY IMPLEMENTED**
+### Linux (X11)
 
-- Uses XDG Desktop Portal + PipeWire for screen capture
-- **Persistent tokens** - Permission dialog only shown once, then saved to `~/.local/share/hue-hunter/screencast-token`
-- Real-time video frame streaming via PipeWire
-- Automatic video format detection (resolution, stride, pixel format)
-- Supports GNOME, KDE Plasma, Sway, and other Portal-compatible compositors
-- Performance: Excellent, ~15 FPS with low latency (comparable to X11)
-- Note: Requires PipeWire 0.3+ and xdg-desktop-portal (standard on modern distros)
+- Captures the root window once with `XGetImage` when sampling starts, before the magnifier window is shown, and samples every grid from that frame. Re-capturing would include the magnifier, because Linux can't exclude a window from capture. Live content under the cursor does not update during a pick.
+- 32-bit visuals are copied directly. Other depths are decoded per pixel by their color masks.
+- Reads the cursor with `XQueryPointer`.
 
-### Windows ✅
+### Linux (Wayland)
 
-- Uses Windows GDI `GetPixel` API
-- Direct pixel sampling without screenshots
-- Native cursor position tracking via `GetCursorPos`
-- No external dependencies required
+- Asks the XDG Desktop Portal for a monitor screencast, reads one frame over PipeWire, then samples from it the same way as X11.
+- Handles the BGRx, RGBx, xRGB and xBGR families (with or without alpha) and the stream's real row stride. Other formats are reported as an error. It gives up after 5 seconds without a frame.
+- The permission token is saved to `~/.local/share/hue-hunter/screencast-token`, so the dialog appears once.
+- Reads the cursor through XWayland with `XQueryPointer`. Known limits: the X11 backend is tried first and also succeeds under XWayland, and XWayland only sees the pointer over X11 windows. See the open issues in the repository.
 
 ## Linux Setup
 
@@ -173,16 +164,7 @@ Debug/diagnostic messages are sent to stderr.
 
 ## Performance Notes
 
-### Sampling Rate
-
-- **macOS**: Can achieve 60+ FPS easily with direct pixel access
-- **Windows**: Similar to macOS, native GDI is very fast
-- **Linux (X11)**: Individual XGetImage calls per pixel - can achieve 30-60 FPS depending on grid size
-- **Linux (Wayland)**: PipeWire video streaming - ~15 FPS with excellent quality and low latency
-
-### Grid Sampling
-
-Larger grid sizes (e.g., 15x15 vs 9x9) require more individual pixel samples, which impacts performance on all platforms. The impact is most noticeable on Linux/X11 where each pixel requires a separate X11 call.
+Each frame captures once and serializes the grid as JSON. The picker requests 15 frames per second. On an Apple Silicon Mac, a 13x13 grid takes about 18 ms per frame when run unthrottled. On Linux, frames come from a buffer captured once per pick, so the per-frame cost is only the lookup and JSON.
 
 ## Permissions
 

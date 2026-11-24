@@ -11,11 +11,20 @@ export default tseslint.config(
       'node_modules/',
       'dev-app/dist/',
       'rust-sampler/',
-      'renderer/preload.js',
-      'renderer/*.d.ts',
     ],
   },
   eslint.configs.recommended,
   tseslint.configs.recommended,
-  prettier
+  prettier,
+  {
+    files: ['tests/fixtures/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        setTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+      },
+    },
+  }
 );

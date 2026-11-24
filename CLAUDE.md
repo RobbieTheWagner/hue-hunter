@@ -17,13 +17,13 @@ pnpm build:rust:dev     # Rust binary, debug mode
 pnpm build:ts           # tsc → dist/
 pnpm start              # Run the dev-app test harness (builds debug Rust binary first)
 
-pnpm test               # Vitest (tests/*.test.ts)
+pnpm test               # Vitest (tests/*.test.ts); manager and picker tests spawn tests/fixtures/fake-sampler.mjs; picker tests fake Electron
 pnpm test:watch
 pnpm vitest run tests/grid-calculation.test.ts   # single test file
 pnpm test:rust          # cargo test in rust-sampler/
 cd rust-sampler && cargo test <name>             # single Rust test
 
-pnpm lint               # eslint . (flat config in eslint.config.mjs)
+pnpm lint               # eslint . plus a type-check of renderer/ (tsconfig.renderer.json)
 pnpm lint:rust          # cargo clippy --all-targets -- -D warnings (warnings fail CI)
 pnpm format             # prettier --write .
 ```
@@ -41,7 +41,7 @@ Three layers communicating over two boundaries:
    - `manager.ts`: `RustSamplerManager` spawns the Rust binary as a child process and exchanges newline-delimited JSON over stdin/stdout (commands in: `start`/`update_grid`/`stop`; pixel data out).
    - `utils/`: grid math (`calculateGridSize(diameter, squareSize)`); grid size changes from zooming are forwarded to Rust via `update_grid`.
 
-2. **Rust sampler (`rust-sampler/`)** — standalone binary `hue-hunter-sampler`. Platform implementations live in `src/sampler/` (`macos.rs`, `windows.rs`, `linux.rs`, `wayland_portal.rs`). Linux backends are Cargo features (`x11`, `wayland`), both off by default — builds must pass `--features x11,wayland` (the pnpm scripts do). Integration tests are in `rust-sampler/tests/`.
+2. **Rust sampler (`rust-sampler/`)** — standalone binary `hue-hunter-sampler`. `sampling.rs` owns the command loop and is platform-independent. Platform implementations in `src/sampler/` (`macos.rs`, `windows.rs`, `linux.rs`, `wayland_portal.rs`) only provide `get_cursor_position` and `sample_grid`. macOS, X11 and Wayland read pixels through `frame.rs` (`Frame` plus a `PixelFormat` byte order). Both Linux backends capture one frozen frame per pick, because Linux can't exclude the magnifier window from a capture. Linux backends are Cargo features (`x11`, `wayland`, where `wayland` implies `x11`), both off by default — builds must pass `--features x11,wayland` (the pnpm scripts do). Tests in `rust-sampler/tests/` cover the wire protocol, `Frame` decoding, and the sampling loop with a fake sampler. To lint and test the Linux code from macOS, run clippy and tests in a Linux container with `libx11-dev libpipewire-0.3-dev libspa-0.2-dev pkg-config clang` installed.
 
 3. **Renderer (`renderer/`)** — the magnifier UI. `main.ts` renders the circular pixel grid; `magnifier-preload.ts` is the IPC bridge. Styled with Tailwind 4 (via `@tailwindcss/vite`).
 
