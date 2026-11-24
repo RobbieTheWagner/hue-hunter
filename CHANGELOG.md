@@ -1,5 +1,17 @@
 # Changelog
 
+## Release (2026-11-24)
+
+* hue-hunter 0.4.2 (patch)
+
+#### :bug: Bug Fix
+* `hue-hunter`
+  * [#12](https://github.com/RobbieTheWagner/hue-hunter/pull/12) fix(sampler): audit cleanup, lifecycle fixes, and shared Frame decoding ([@RobbieTheWagner](https://github.com/RobbieTheWagner))
+  * [#11](https://github.com/RobbieTheWagner/hue-hunter/pull/11) Bump ashpd to 0.12 to fix build on Rust 1.100 ([@RobbieTheWagner](https://github.com/RobbieTheWagner))
+
+#### Committers: 1
+- Robbie Wagner ([@RobbieTheWagner](https://github.com/RobbieTheWagner))
+
 ## Release (2026-01-22)
 
 * hue-hunter 0.4.1 (patch)
