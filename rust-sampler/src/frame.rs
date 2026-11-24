@@ -59,17 +59,26 @@ impl Frame {
         stride: usize,
         format: PixelFormat,
     ) -> Result<Self, String> {
-        let row_bytes = width as usize * 4;
         if width == 0 || height == 0 {
             return Err(format!("Empty frame: {}x{}", width, height));
         }
+        let overflow = || {
+            format!(
+                "Frame {}x{} with stride {} overflows",
+                width, height, stride
+            )
+        };
+        let row_bytes = (width as usize).checked_mul(4).ok_or_else(overflow)?;
         if stride < row_bytes {
             return Err(format!(
                 "Stride {} is shorter than a {}px row",
                 stride, width
             ));
         }
-        let needed = stride * (height as usize - 1) + row_bytes;
+        let needed = (height as usize - 1)
+            .checked_mul(stride)
+            .and_then(|rows| rows.checked_add(row_bytes))
+            .ok_or_else(overflow)?;
         if data.len() < needed {
             return Err(format!(
                 "Frame buffer has {} bytes, {}x{} with stride {} needs {}",

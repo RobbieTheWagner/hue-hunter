@@ -16,8 +16,6 @@ interface ErrorResponse {
   error: string;
 }
 
-type SamplerResponse = PixelData | ErrorResponse;
-
 type SamplerCallback = (data: PixelData) => void;
 type ErrorCallback = (error: string) => void;
 
@@ -25,6 +23,8 @@ const START_TIMEOUT_MS = 30_000;
 
 export class RustSamplerManager {
   private process: ChildProcess | null = null;
+  /** Bumped by every start() and stop(), so a start waiting on an old child can tell it was superseded. */
+  private generation = 0;
   public dataCallback: SamplerCallback | null = null;
   public errorCallback: ErrorCallback | null = null;
 
@@ -80,8 +80,12 @@ export class RustSamplerManager {
     onData: SamplerCallback,
     onError: ErrorCallback
   ): Promise<void> {
+    const generation = ++this.generation;
     if (this.process) {
-      await this.stop();
+      await this.stopProcess();
+    }
+    if (generation !== this.generation) {
+      throw new Error('Sampler start was superseded by stop() or start()');
     }
 
     this.dataCallback = onData;
@@ -91,53 +95,53 @@ export class RustSamplerManager {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.process = proc;
+    // A replaced or stopped child can still flush stdout; drop its events.
+    const owned = () => this.process === proc;
 
-    // Writing to a sampler that already died emits EPIPE here. The exit
+    proc.on('error', (error: Error) => {
+      if (!owned()) return;
+      this.process = null;
+      this.errorCallback?.(error.message);
+    });
+
+    // 'close' waits for stdout to drain, so a final error line arrives first.
+    proc.on('close', (code, signal) => {
+      if (!owned()) return;
+      this.process = null;
+      this.errorCallback?.(
+        `Sampler exited unexpectedly (${signal ?? `code ${code}`})`
+      );
+    });
+
+    // Writing to a sampler that already died emits EPIPE here. The close
     // handler reports the death, so don't let the write error crash the app.
-    proc.stdin.on('error', () => {});
+    // stdio is missing when spawn fails with EMFILE; the error event reports it.
+    proc.stdin?.on('error', () => {});
 
     let buffer = '';
-    proc.stdout.on('data', (data: Buffer) => {
+    proc.stdout?.on('data', (data: Buffer) => {
       buffer += data.toString();
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';
 
       for (const line of lines) {
-        if (!line.trim()) continue;
-        let parsed: SamplerResponse;
+        if (!line.trim() || !owned()) continue;
+        // Also catches `in` throwing on non-object JSON and callback errors.
         try {
-          parsed = JSON.parse(line) as SamplerResponse;
-        } catch {
-          console.error('[HueHunter] Ignoring malformed sampler output:', line);
-          continue;
-        }
-        if ('error' in parsed) {
-          this.errorCallback?.(parsed.error);
-        } else {
-          this.dataCallback?.(parsed);
+          const parsed = JSON.parse(line) as PixelData | ErrorResponse;
+          if ('error' in parsed) {
+            this.errorCallback?.(parsed.error);
+          } else {
+            this.dataCallback?.(parsed);
+          }
+        } catch (error) {
+          console.error('[HueHunter] Bad sampler output:', line, error);
         }
       }
     });
 
-    proc.stderr.on('data', (data: Buffer) => {
+    proc.stderr?.on('data', (data: Buffer) => {
       console.error('[HueHunter stderr]', data.toString());
-    });
-
-    proc.on('error', (error: Error) => {
-      if (this.process === proc) {
-        this.process = null;
-      }
-      this.errorCallback?.(error.message);
-    });
-
-    proc.on('exit', (code, signal) => {
-      if (this.process !== proc) {
-        return;
-      }
-      this.process = null;
-      this.errorCallback?.(
-        `Sampler exited unexpectedly (${signal ?? `code ${code}`})`
-      );
     });
 
     this.sendCommand({
@@ -174,7 +178,7 @@ export class RustSamplerManager {
         START_TIMEOUT_MS
       );
 
-      void this.start(
+      this.start(
         gridSize,
         sampleRate,
         (data) => {
@@ -185,6 +189,8 @@ export class RustSamplerManager {
           settle(error);
           onError(error);
         }
+      ).catch((error: unknown) =>
+        settle(error instanceof Error ? error.message : String(error))
       );
     });
   }
@@ -193,8 +199,16 @@ export class RustSamplerManager {
     this.sendCommand({ command: 'update_grid', grid_size: gridSize });
   }
 
-  /** Ask the sampler to exit, killing it if it hasn't after 500ms. */
+  /**
+   * Ask the sampler to exit, killing it if it hasn't after 500ms. Also cancels
+   * a start() that is still waiting for a previous sampler to exit.
+   */
   stop(): Promise<void> {
+    this.generation++;
+    return this.stopProcess();
+  }
+
+  private stopProcess(): Promise<void> {
     const proc = this.process;
     this.process = null;
     this.dataCallback = null;

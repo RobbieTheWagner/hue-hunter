@@ -123,3 +123,8 @@ fn grid_step_skips_frame_pixels_for_hidpi_captures() {
     assert_eq!(grid[1][1], Color::new(4, 4, 7));
     assert_eq!(grid[2][2], Color::new(6, 6, 7));
 }
+
+#[test]
+fn rejects_dimensions_whose_byte_length_overflows() {
+    assert!(Frame::new(vec![0; 4], 1, 3, 1usize << 63, PixelFormat::Bgrx).is_err());
+}

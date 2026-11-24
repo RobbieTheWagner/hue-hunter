@@ -130,6 +130,68 @@ fn pixel_format(format: VideoFormat) -> Option<PixelFormat> {
     }
 }
 
+/// An EnumFormat param offering raw video in every byte order `pixel_format` reads.
+fn format_params() -> Result<Vec<u8>, String> {
+    use pw::spa::param::format::{FormatProperties, MediaSubtype, MediaType};
+    use pw::spa::pod::{self, serialize::PodSerializer, Value};
+    use pw::spa::utils::{Fraction, Rectangle, SpaTypes};
+
+    let object = pod::object!(
+        SpaTypes::ObjectParamFormat,
+        pw::spa::param::ParamType::EnumFormat,
+        pod::property!(FormatProperties::MediaType, Id, MediaType::Video),
+        pod::property!(FormatProperties::MediaSubtype, Id, MediaSubtype::Raw),
+        pod::property!(
+            FormatProperties::VideoFormat,
+            Choice,
+            Enum,
+            Id,
+            VideoFormat::BGRx,
+            VideoFormat::BGRx,
+            VideoFormat::BGRA,
+            VideoFormat::RGBx,
+            VideoFormat::RGBA,
+            VideoFormat::xRGB,
+            VideoFormat::ARGB,
+            VideoFormat::xBGR,
+            VideoFormat::ABGR,
+        ),
+        pod::property!(
+            FormatProperties::VideoSize,
+            Choice,
+            Range,
+            Rectangle,
+            Rectangle {
+                width: 1920,
+                height: 1080
+            },
+            Rectangle {
+                width: 1,
+                height: 1
+            },
+            Rectangle {
+                width: 16384,
+                height: 16384
+            }
+        ),
+        pod::property!(
+            FormatProperties::VideoFramerate,
+            Choice,
+            Range,
+            Fraction,
+            Fraction { num: 30, denom: 1 },
+            Fraction { num: 0, denom: 1 },
+            Fraction {
+                num: 1000,
+                denom: 1
+            }
+        ),
+    );
+    PodSerializer::serialize(std::io::Cursor::new(Vec::new()), &Value::Object(object))
+        .map(|(cursor, _)| cursor.into_inner())
+        .map_err(|e| format!("Failed to build PipeWire format parameters: {:?}", e))
+}
+
 /// Connects to the portal's PipeWire remote and returns the first frame it sends.
 fn capture_frame(stream_info: Stream) -> Result<Frame, String> {
     pw::init();
@@ -194,13 +256,16 @@ fn capture_frame(stream_info: Stream) -> Result<Frame, String> {
                 if size == 0 {
                     return;
                 }
-                let Some(bytes) = data.data().and_then(|d| d.get(offset..offset + size)) else {
+                let Some(mapped) = data.data().filter(|d| !d.is_empty()) else {
                     *result.borrow_mut() = Some(Err(
                         "PipeWire buffer is not memory-mapped (DMA-BUF only?)".into(),
                     ));
                     mainloop.quit();
                     return;
                 };
+                // SPA defines the chunk offset modulo the mapped size.
+                let offset = offset % mapped.len();
+                let bytes = &mapped[offset..(offset + size).min(mapped.len())];
                 let frame = match pixel_format(info.format()) {
                     Some(pixel_format) => Frame::new(
                         bytes.to_vec(),
@@ -221,12 +286,15 @@ fn capture_frame(stream_info: Stream) -> Result<Frame, String> {
         .register()
         .map_err(|e| format!("Failed to register stream listener: {}", e))?;
 
+    let formats = format_params()?;
+    let mut params = [pw::spa::pod::Pod::from_bytes(&formats)
+        .ok_or("Failed to build PipeWire format parameters")?];
     stream
         .connect(
             pw::spa::utils::Direction::Input,
             Some(stream_info.node_id),
             pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS,
-            &mut [],
+            &mut params,
         )
         .map_err(|e| format!("Failed to connect PipeWire stream: {}", e))?;
 

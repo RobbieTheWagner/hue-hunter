@@ -35,5 +35,8 @@ fn main() {
         let _ = commands_tx.send(Command::Stop);
     });
 
-    sampling::run(&mut *sampler, &commands, &mut io::stdout().lock());
+    if let Err(e) = sampling::run(&mut *sampler, &commands, &mut io::stdout().lock()) {
+        eprintln!("Fatal error writing output: {}", e);
+        std::process::exit(1);
+    }
 }

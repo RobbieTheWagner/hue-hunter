@@ -9,7 +9,12 @@ pub fn normalize_grid_size(grid_size: usize) -> usize {
 }
 
 /// Waits for `start`, then samples until `stop`, EOF, or a closed output stream.
-pub fn run(sampler: &mut dyn PixelSampler, commands: &Receiver<Command>, out: &mut dyn Write) {
+/// A closed output stream is a clean shutdown; other write failures are returned.
+pub fn run(
+    sampler: &mut dyn PixelSampler,
+    commands: &Receiver<Command>,
+    out: &mut dyn Write,
+) -> std::io::Result<()> {
     while let Ok(command) = commands.recv() {
         match command {
             Command::Start {
@@ -20,15 +25,18 @@ pub fn run(sampler: &mut dyn PixelSampler, commands: &Receiver<Command>, out: &m
                     "Starting sampling: grid_size={}, sample_rate={}",
                     grid_size, sample_rate
                 );
-                let _ = sample_loop(sampler, grid_size, sample_rate, commands, out);
-                return;
+                return match sample_loop(sampler, grid_size, sample_rate, commands, out) {
+                    Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
+                    result => result,
+                };
             }
             Command::UpdateGrid { .. } => {
                 eprintln!("update_grid received before start (ignored)");
             }
-            Command::Stop => return,
+            Command::Stop => return Ok(()),
         }
     }
+    Ok(())
 }
 
 fn sample_loop(

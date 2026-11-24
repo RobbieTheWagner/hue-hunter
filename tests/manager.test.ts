@@ -108,6 +108,51 @@ describe.skipIf(process.platform === 'win32')('RustSamplerManager', () => {
     expect(manager.isRunning()).toBe(false);
   });
 
+  it('skips output lines that are valid JSON but not objects', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const sink = collect();
+    await useMode('non-object-lines').ensureStarted(
+      9,
+      15,
+      sink.onData,
+      sink.onError
+    );
+
+    await until(() => sink.data.length >= 3);
+    expect(sink.errors).toEqual([]);
+  });
+
+  it('keeps delivering frames after a data callback throws', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    let calls = 0;
+    await useMode('normal').ensureStarted(9, 15, () => {
+      calls++;
+      throw new Error('colorNameFn failed');
+    });
+
+    await until(() => calls >= 3);
+    expect(manager.isRunning()).toBe(true);
+  });
+
+  it('rejects ensureStarted promptly when spawn throws', async () => {
+    manager = new RustSamplerManager('/bad\0path');
+    const startedAt = Date.now();
+
+    await expect(manager.ensureStarted(9, 15)).rejects.toThrow();
+    expect(Date.now() - startedAt).toBeLessThan(2000);
+  });
+
+  it('stop cancels a start that is waiting for the previous sampler to exit', async () => {
+    await useMode('normal').ensureStarted(9, 15);
+
+    const replacement = manager.ensureStarted(9, 15);
+    await manager.stop();
+
+    await expect(replacement).rejects.toThrow('superseded');
+    await new Promise((r) => setTimeout(r, 100));
+    expect(manager.isRunning()).toBe(false);
+  });
+
   it('survives writing to a sampler whose stdin is closed', async () => {
     const sink = collect();
     await useMode('close-stdin').ensureStarted(

@@ -68,7 +68,7 @@ fn session(
         tx.send(command).unwrap();
     }
     let mut out = Vec::new();
-    run(&mut sampler, &rx, &mut out);
+    run(&mut sampler, &rx, &mut out).unwrap();
     String::from_utf8(out)
         .unwrap()
         .lines()
@@ -184,14 +184,14 @@ fn returns_when_the_command_channel_closes() {
     let mut sampler = FakeSampler::new(channel().0, u8::MAX);
     tx.send(start(3)).unwrap();
     drop(tx);
-    run(&mut sampler, &rx, &mut Vec::new());
+    run(&mut sampler, &rx, &mut Vec::new()).unwrap();
 }
 
-struct ClosedPipe;
+struct FailingWriter(io::ErrorKind);
 
-impl Write for ClosedPipe {
+impl Write for FailingWriter {
     fn write(&mut self, _: &[u8]) -> io::Result<usize> {
-        Err(io::ErrorKind::BrokenPipe.into())
+        Err(self.0.into())
     }
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
@@ -203,6 +203,24 @@ fn returns_when_stdout_is_closed() {
     let (tx, rx) = channel();
     let mut sampler = FakeSampler::new(tx.clone(), u8::MAX);
     tx.send(start(3)).unwrap();
-    run(&mut sampler, &rx, &mut ClosedPipe);
+    run(
+        &mut sampler,
+        &rx,
+        &mut FailingWriter(io::ErrorKind::BrokenPipe),
+    )
+    .unwrap();
     assert_eq!(sampler.frame, 1);
+}
+
+#[test]
+fn returns_other_write_failures_as_errors() {
+    let (tx, rx) = channel();
+    let mut sampler = FakeSampler::new(tx.clone(), u8::MAX);
+    tx.send(start(3)).unwrap();
+    let result = run(
+        &mut sampler,
+        &rx,
+        &mut FailingWriter(io::ErrorKind::StorageFull),
+    );
+    assert_eq!(result.unwrap_err().kind(), io::ErrorKind::StorageFull);
 }

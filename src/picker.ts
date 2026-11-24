@@ -64,7 +64,11 @@ export class ColorPicker {
     return calculateGridSize(this.magnifierDiameter, this.squareSize);
   }
 
-  /** What the sampler captures: a margin around the displayed grid so zooming never shows empty cells. */
+  /**
+   * What the sampler captures: a margin around the displayed grid, so a zoom
+   * usually has pixels to show before the sampler applies the new size. Fast
+   * repeated zooms can outrun it, leaving edge cells unpainted for a frame.
+   */
   private get samplerGridSize(): number {
     return calculateBufferedGridSize(this.magnifierDiameter, this.squareSize);
   }
