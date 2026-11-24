@@ -48,7 +48,27 @@ const onStart = () => {
     process.exit(1);
   }
   if (mode === 'silent') return;
-  if (mode === 'non-object-lines') write('null\n42\n"text"\n{}\n{"grid":3}\n');
+  if (mode === 'non-object-lines') {
+    // Each line breaks exactly one part of the pixel-data shape.
+    const broken = (edit) => {
+      const frame = JSON.parse(pixel(3, 0));
+      edit(frame);
+      return JSON.stringify(frame);
+    };
+    const lines = [
+      'null',
+      '42',
+      '"text"',
+      '{}',
+      broken((f) => delete f.cursor.y),
+      broken((f) => delete f.timestamp),
+      broken((f) => (f.center.r = '1')),
+      broken((f) => (f.grid = 3)),
+      broken((f) => (f.grid[1] = 'row')),
+      broken((f) => delete f.grid[2][0].hex),
+    ];
+    write(lines.join('\n') + '\n');
+  }
   timer = setInterval(emit, 10);
 };
 

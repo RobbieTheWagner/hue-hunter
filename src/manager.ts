@@ -20,12 +20,27 @@ function isErrorResponse(value: unknown): value is ErrorResponse {
   return typeof (value as ErrorResponse | null)?.error === 'string';
 }
 
+type Color = PixelData['center'];
+
+function isColor(value: unknown): value is Color {
+  const c = value as Color | null;
+  return (
+    typeof c?.r === 'number' &&
+    typeof c.g === 'number' &&
+    typeof c.b === 'number' &&
+    typeof c.hex === 'string'
+  );
+}
+
 function isPixelData(value: unknown): value is PixelData {
   const data = value as PixelData | null;
   return (
-    typeof data?.center?.hex === 'string' &&
-    typeof data.cursor?.x === 'number' &&
-    Array.isArray(data.grid)
+    typeof data?.cursor?.x === 'number' &&
+    typeof data.cursor.y === 'number' &&
+    typeof data.timestamp === 'number' &&
+    isColor(data.center) &&
+    Array.isArray(data.grid) &&
+    data.grid.every((row) => Array.isArray(row) && row.every(isColor))
   );
 }
 

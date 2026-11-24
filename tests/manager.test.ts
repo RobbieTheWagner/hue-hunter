@@ -119,7 +119,8 @@ describe.skipIf(process.platform === 'win32')('RustSamplerManager', () => {
     );
 
     await until(() => sink.data.length >= 3);
-    expect(sink.data.every((d) => Array.isArray(d.grid))).toBe(true);
+    // The broken lines carry timestamp 0 (or none); real frames count from 1.
+    expect(sink.data.every((d) => d.timestamp > 0)).toBe(true);
     expect(sink.errors).toEqual([]);
   });
 
@@ -206,16 +207,24 @@ describe.skipIf(process.platform === 'win32')('RustSamplerManager', () => {
   });
 
   it('a stop that is not awaited does not clear the next session', async () => {
+    // The first child ignores stop and keeps emitting 9x9 frames until killed.
     const first = collect();
-    await useMode('normal').ensureStarted(9, 15, first.onData, first.onError);
+    await useMode('ignore-stop').ensureStarted(
+      9,
+      15,
+      first.onData,
+      first.onError
+    );
 
     void manager.stop();
+    process.env.FAKE_SAMPLER_MODE = 'normal';
     const second = collect();
     await manager.ensureStarted(5, 15, second.onData, second.onError);
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 200));
 
     expect(manager.isRunning()).toBe(true);
-    await until(() => second.data.length >= 3);
+    expect(second.data.length).toBeGreaterThan(3);
+    expect(second.data.map((d) => d.grid.length)).not.toContain(9);
     expect(first.errors).toEqual([]);
     expect(second.errors).toEqual([]);
   });
